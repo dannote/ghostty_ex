@@ -37,7 +37,20 @@ jobs:
           cp /tmp/ghostty-src/zig-out/lib/libghostty-vt.* priv/lib/ 2>/dev/null || true
 
       - run: mix deps.get
-      - run: GHOSTTY_BUILD=1 mix compile --warnings-as-errors
+
+      - name: Compile
+        run: |
+          PRIV_DIR=_build/dev/lib/ghostty/priv
+          mkdir -p $PRIV_DIR/lib $PRIV_DIR/include
+          cp -R priv/lib/* $PRIV_DIR/lib/
+          cp -R priv/include/* $PRIV_DIR/include/
+          GHOSTTY_BUILD=1 mix compile --warnings-as-errors
+
+          # Also populate test priv
+          TEST_PRIV=_build/test/lib/ghostty/priv
+          mkdir -p $TEST_PRIV/lib $TEST_PRIV/include
+          cp -R priv/lib/* $TEST_PRIV/lib/
+          cp -R priv/include/* $TEST_PRIV/include/
       - run: mix format --check-formatted
       - run: mix credo --strict
       - run: mix ex_dna

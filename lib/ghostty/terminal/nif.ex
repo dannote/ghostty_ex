@@ -3,6 +3,11 @@ defmodule Ghostty.Terminal.Nif do
 
   @version Mix.Project.config()[:version]
 
+  @ghostty_vt_lib (case :os.type() do
+                     {:unix, :darwin} -> "lib/libghostty-vt.dylib"
+                     _ -> "lib/libghostty-vt.so"
+                   end)
+
   use ZiglerPrecompiled,
     otp_app: :ghostty,
     base_url: "https://github.com/dannote/ghostty_ex/releases/download/v#{@version}",
@@ -12,7 +17,7 @@ defmodule Ghostty.Terminal.Nif do
     zig_code_path: "ghostty_nif.zig",
     c: [
       include_dirs: [{:priv, "include"}],
-      link_lib: [{:priv, "lib/libghostty-vt.dylib"}]
+      link_lib: [{:priv, @ghostty_vt_lib}]
     ],
     resources: [:TerminalResource],
     nifs: [
