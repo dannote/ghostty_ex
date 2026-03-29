@@ -11,9 +11,12 @@ full Unicode, 24-bit color, scrollback with text reflow. Terminals are GenServer
 
 ## Prerequisites
 
-libghostty-vt must be built and placed in `priv/` before compilation.
-Requires [Zig 0.15+](https://ziglang.org) and the
-[Ghostty source](https://github.com/ghostty-org/ghostty):
+Precompiled NIF binaries are downloaded automatically for supported platforms
+(x86_64 Linux, aarch64 Linux, aarch64 macOS).
+
+To build from source instead, set `GHOSTTY_BUILD=1` and ensure
+[Zig 0.15+](https://ziglang.org) is on PATH. libghostty-vt headers and library
+must be in `priv/`:
 
 ```bash
 cd /path/to/ghostty
@@ -21,15 +24,8 @@ zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
 # Copy into your project
 mkdir -p priv/lib priv/include
-cp zig-out/lib/libghostty-vt.dylib priv/lib/       # or .so on Linux
+cp zig-out/lib/libghostty-vt.* priv/lib/
 cp -R zig-out/include/ghostty priv/include/ghostty
-```
-
-Or set `GHOSTTY_SOURCE_DIR` and enable the built-in compiler:
-
-```elixir
-# mix.exs
-compilers: [:ghostty_vt] ++ Mix.compilers()
 ```
 
 ## Installation

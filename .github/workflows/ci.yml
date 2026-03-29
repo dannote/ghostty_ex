@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, otp: '27', elixir: '1.18' }
+          - { os: macos-latest, otp: '27', elixir: '1.18' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      - name: Build libghostty-vt
+        run: |
+          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
+          cd /tmp/ghostty-src
+          zig build -Demit-lib-vt -Doptimize=ReleaseFast
+
+          mkdir -p priv/lib priv/include
+          cp -R /tmp/ghostty-src/zig-out/include/ghostty priv/include/
+          cp /tmp/ghostty-src/zig-out/lib/libghostty-vt.* priv/lib/ 2>/dev/null || true
+
+      - run: mix deps.get
+      - run: GHOSTTY_BUILD=1 mix compile --warnings-as-errors
+      - run: mix format --check-formatted
+      - run: mix credo --strict
+      - run: mix ex_dna
+      - run: mix test
