@@ -148,6 +148,7 @@ defmodule GhosttyTest do
     end
 
     test "terminal is cleaned up on crash" do
+      Process.flag(:trap_exit, true)
       {:ok, term} = Terminal.start_link()
       ref = Process.monitor(term)
       Process.exit(term, :kill)

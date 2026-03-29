@@ -1,55 +1,121 @@
 defmodule Ghostty.Terminal.Nif do
   @moduledoc false
 
-  # Phase 1 stub — replaced with Zigler NIFs once libghostty-vt builds.
-  #
-  # The real implementation uses:
-  #
-  #     use Zig,
-  #       otp_app: :ghostty,
-  #       c: [
-  #         include_dirs: [{:priv, "include"}],
-  #         link_lib: [{:priv, "lib/libghostty-vt"}]
-  #       ],
-  #       resources: [:TerminalResource],
-  #       nifs: [
-  #         nif_new:        [:dirty_cpu],
-  #         nif_free:       [:dirty_cpu],
-  #         nif_vt_write:   [:dirty_cpu],
-  #         nif_resize:     [:dirty_cpu],
-  #         nif_reset:      [:dirty_cpu],
-  #         nif_snapshot:   [:dirty_cpu],
-  #         nif_scroll:     [:dirty_cpu],
-  #         nif_get_cursor: [:dirty_cpu],
-  #       ]
+  use Zig,
+    otp_app: :ghostty,
+    c: [
+      include_dirs: [{:priv, "include"}],
+      link_lib: [{:priv, "lib/libghostty-vt.dylib"}]
+    ],
+    resources: [:TerminalResource],
+    nifs: [
+      nif_new: [:dirty_cpu],
+      nif_vt_write: [:dirty_cpu],
+      nif_resize: [:dirty_cpu],
+      nif_reset: [:dirty_cpu],
+      nif_snapshot: [:dirty_cpu],
+      nif_scroll: [:dirty_cpu],
+      nif_get_cursor: [:dirty_cpu]
+    ]
 
-  def nif_new(_cols, _rows, _max_scrollback) do
-    raise "libghostty-vt NIF not loaded — build requires Zig 0.15+ with macOS SDK support"
-  end
+  ~Z"""
+  const beam = @import("beam");
+  const root = @import("root");
+  const std = @import("std");
+  const g = @cImport(@cInclude("ghostty/vt.h"));
 
-  def nif_free(_ref), do: :ok
+  const TerminalData = struct {
+      terminal: g.GhosttyTerminal,
+  };
 
-  def nif_vt_write(_ref, _data) do
-    raise "libghostty-vt NIF not loaded"
-  end
+  pub const TerminalResource = beam.Resource(TerminalData, root, .{
+      .Callbacks = TerminalCallbacks,
+  });
 
-  def nif_resize(_ref, _cols, _rows) do
-    raise "libghostty-vt NIF not loaded"
-  end
+  pub const TerminalCallbacks = struct {
+      pub fn dtor(data: *TerminalData) void {
+          g.ghostty_terminal_free(data.terminal);
+      }
+  };
 
-  def nif_reset(_ref) do
-    raise "libghostty-vt NIF not loaded"
-  end
+  pub fn nif_new(cols: u16, rows: u16, max_scrollback: u32) !TerminalResource {
+      var terminal: g.GhosttyTerminal = undefined;
+      const result = g.ghostty_terminal_new(null, &terminal, .{
+          .cols = cols,
+          .rows = rows,
+          .max_scrollback = max_scrollback,
+      });
+      if (result != g.GHOSTTY_SUCCESS) return error.terminal_creation_failed;
+      return TerminalResource.create(.{ .terminal = terminal }, .{});
+  }
 
-  def nif_snapshot(_ref, _format) do
-    raise "libghostty-vt NIF not loaded"
-  end
+  pub fn nif_vt_write(res: TerminalResource, data: []const u8) void {
+      g.ghostty_terminal_vt_write(res.unpack().terminal, data.ptr, data.len);
+  }
 
-  def nif_scroll(_ref, _delta) do
-    raise "libghostty-vt NIF not loaded"
-  end
+  pub fn nif_resize(res: TerminalResource, cols: u16, rows: u16) void {
+      _ = g.ghostty_terminal_resize(res.unpack().terminal, cols, rows, 0, 0);
+  }
 
-  def nif_get_cursor(_ref) do
-    raise "libghostty-vt NIF not loaded"
-  end
+  pub fn nif_reset(res: TerminalResource) void {
+      g.ghostty_terminal_reset(res.unpack().terminal);
+  }
+
+  pub fn nif_scroll(res: TerminalResource, delta: i32) void {
+      g.ghostty_terminal_scroll_viewport(res.unpack().terminal, .{
+          .tag = g.GHOSTTY_SCROLL_VIEWPORT_DELTA,
+          .value = .{ .delta = @intCast(delta) },
+      });
+  }
+
+  pub fn nif_get_cursor(res: TerminalResource) !beam.term {
+      const t = res.unpack().terminal;
+      var col: u16 = 0;
+      var row: u16 = 0;
+      _ = g.ghostty_terminal_get(t, g.GHOSTTY_TERMINAL_DATA_CURSOR_X, &col);
+      _ = g.ghostty_terminal_get(t, g.GHOSTTY_TERMINAL_DATA_CURSOR_Y, &row);
+      return beam.make(.{ col, row }, .{});
+  }
+
+  pub fn nif_snapshot(res: TerminalResource, format_str: []const u8) !beam.term {
+      const t = res.unpack().terminal;
+
+      const emit: c_uint = if (eql(format_str, "plain"))
+          @intCast(g.GHOSTTY_FORMATTER_FORMAT_PLAIN)
+      else if (eql(format_str, "html"))
+          @intCast(g.GHOSTTY_FORMATTER_FORMAT_HTML)
+      else if (eql(format_str, "vt"))
+          @intCast(g.GHOSTTY_FORMATTER_FORMAT_VT)
+      else
+          return error.badarg;
+
+      var opts: g.GhosttyFormatterTerminalOptions = std.mem.zeroes(g.GhosttyFormatterTerminalOptions);
+      opts.size = @sizeOf(g.GhosttyFormatterTerminalOptions);
+      opts.emit = emit;
+      opts.trim = true;
+
+      var fmtr: g.GhosttyFormatter = undefined;
+      if (g.ghostty_formatter_terminal_new(null, &fmtr, t, opts) != g.GHOSTTY_SUCCESS)
+          return error.formatter_creation_failed;
+      defer g.ghostty_formatter_free(fmtr);
+
+      // First pass: query required size
+      var needed: usize = 0;
+      _ = g.ghostty_formatter_format_buf(fmtr, null, 0, &needed);
+
+      // Allocate with BEAM allocator and format
+      const buf = beam.allocator.alloc(u8, needed) catch return error.out_of_memory;
+      defer beam.allocator.free(buf);
+
+      var written: usize = 0;
+      if (g.ghostty_formatter_format_buf(fmtr, buf.ptr, buf.len, &written) != g.GHOSTTY_SUCCESS)
+          return error.format_failed;
+
+      return beam.make(buf[0..written], .{});
+  }
+
+  fn eql(a: []const u8, comptime b: []const u8) bool {
+      return std.mem.eql(u8, a, b);
+  }
+  """
 end

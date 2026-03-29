@@ -276,7 +276,7 @@ defmodule Ghostty.Terminal do
   end
 
   def handle_call({:snapshot, format}, _from, state) do
-    result = Nif.nif_snapshot(state.ref, format)
+    result = Nif.nif_snapshot(state.ref, Atom.to_string(format))
     {:reply, {:ok, result}, state}
   end
 
