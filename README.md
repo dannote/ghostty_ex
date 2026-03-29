@@ -1,8 +1,5 @@
 # Ghostty
 
-[![Hex.pm](https://img.shields.io/hexpm/v/ghostty.svg)](https://hex.pm/packages/ghostty)
-[![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/ghostty)
-
 Terminal emulator library for the BEAM.
 
 Wraps [libghostty-vt](https://ghostty.org) — the virtual terminal extracted from
@@ -32,7 +29,7 @@ cp -R zig-out/include/ghostty priv/include/ghostty
 
 ```elixir
 def deps do
-  [{:ghostty, "~> 0.1.0"}]
+  [{:ghostty, "~> 0.1"}]
 end
 ```
 
@@ -89,15 +86,17 @@ Ghostty.Terminal.write(term, ansi_output)
 
 See the [`examples/`](examples/) directory:
 
-- `hello.exs` — basic write/snapshot with colors
-- `ansi_stripper.exs` — pipe stdin, strip ANSI codes
-- `html_recorder.exs` — capture command output as styled HTML
-- `progress_bar.exs` — `\r` overwrites → final screen state only
-- `reflow.exs` — text reflow on resize
-- `supervised.exs` — named terminals in a supervision tree
-- `diff.exs` — terminal-aware Myers diff
-- `expect.exs` — Expect-like automation with pattern matching
-- `pool.exs` — reusable terminal pool for concurrent processing
+| Example | What it does |
+|---|---|
+| [`hello.exs`](examples/hello.exs) | Write with colors, read back plain + HTML |
+| [`ansi_stripper.exs`](examples/ansi_stripper.exs) | Pipe stdin, strip ANSI codes |
+| [`html_recorder.exs`](examples/html_recorder.exs) | Capture command output as styled HTML |
+| [`progress_bar.exs`](examples/progress_bar.exs) | `\r` overwrites → final screen state only |
+| [`reflow.exs`](examples/reflow.exs) | Text reflow on resize |
+| [`supervised.exs`](examples/supervised.exs) | Named terminals in a supervision tree |
+| [`diff.exs`](examples/diff.exs) | Terminal-aware Myers diff |
+| [`expect.exs`](examples/expect.exs) | Expect-like automation with pattern matching |
+| [`pool.exs`](examples/pool.exs) | Reusable terminal pool for concurrent processing |
 
 ## Roadmap
 
@@ -106,7 +105,6 @@ See the [`examples/`](examples/) directory:
 - [ ] Effect callbacks (PTY write-back, bell, title)
 - [ ] Render state API (cell-level iteration for LiveView)
 - [ ] PTY module (`forkpty` + non-blocking I/O)
-- [ ] Precompiled NIF binaries
 
 ## License
 
