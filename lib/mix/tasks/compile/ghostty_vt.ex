@@ -8,7 +8,7 @@ defmodule Mix.Tasks.Compile.GhosttyVt do
   use Mix.Task.Compiler
 
   @ghostty_repo "https://github.com/ghostty-org/ghostty.git"
-  @ghostty_ref "main"
+  @ghostty_ref "baad0aa6669dc576872831752be0f30debecbfd1"
 
   @impl true
   def run(_args) do
@@ -30,12 +30,13 @@ defmodule Mix.Tasks.Compile.GhosttyVt do
       end
     else
       unless File.dir?(Path.join(dir, ".git")) do
-        Mix.shell().info("Cloning ghostty (#{@ghostty_ref})...")
+        Mix.shell().info("Cloning ghostty (#{String.slice(@ghostty_ref, 0, 7)})...")
 
-        System.cmd("git", ["clone", "--depth", "1", "--branch", @ghostty_ref, @ghostty_repo, dir],
-          stderr_to_stdout: true
-        )
+        System.cmd("git", ["clone", @ghostty_repo, dir], stderr_to_stdout: true)
         |> check_cmd!("git clone")
+
+        System.cmd("git", ["checkout", @ghostty_ref], cd: dir, stderr_to_stdout: true)
+        |> check_cmd!("git checkout")
       end
     end
   end

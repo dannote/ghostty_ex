@@ -2,7 +2,7 @@ defmodule Ghostty.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/elixir-volt/ghostty"
+  @source_url "https://github.com/dannote/ghostty_ex"
 
   def project do
     [
@@ -10,13 +10,13 @@ defmodule Ghostty.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      # compilers: [:ghostty_vt] ++ Mix.compilers(),
       deps: deps(),
       aliases: aliases(),
       dialyzer: [plt_add_apps: []],
       name: "Ghostty",
       description: "Terminal emulator library for the BEAM — libghostty-vt NIFs with OTP integration.",
       source_url: @source_url,
+      homepage_url: @source_url,
       package: package(),
       docs: docs()
     ]
@@ -65,7 +65,16 @@ defmodule Ghostty.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w[lib mix.exs README.md LICENSE CHANGELOG.md .formatter.exs]
+      files: ~w[
+        lib/ghostty/terminal/nif.ex
+        lib/ghostty/terminal.ex
+        lib/ghostty/key_event.ex
+        lib/ghostty/mouse_event.ex
+        lib/ghostty.ex
+        lib/mix
+        examples
+        mix.exs README.md LICENSE CHANGELOG.md .formatter.exs
+      ]
     ]
   end
 
@@ -73,7 +82,12 @@ defmodule Ghostty.MixProject do
     [
       main: "Ghostty",
       extras: ["README.md", "CHANGELOG.md"],
-      source_ref: "v#{@version}"
+      source_ref: "v#{@version}",
+      groups_for_modules: [
+        Core: [Ghostty, Ghostty.Terminal],
+        Events: [Ghostty.KeyEvent, Ghostty.MouseEvent],
+        Internal: [Ghostty.Terminal.Nif]
+      ]
     ]
   end
 end
