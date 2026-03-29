@@ -60,15 +60,12 @@ jobs:
           cp -R priv/lib/* $PRIV_DIR/lib/
           cp -R priv/include/* $PRIV_DIR/include/
 
-          # Fix dylib install_name for macOS so sema binary can find it
-          if [ -f "$PRIV_DIR/lib/libghostty-vt.dylib" ]; then
-            install_name_tool -id "$(cd $PRIV_DIR/lib && pwd)/libghostty-vt.dylib" \
-              $PRIV_DIR/lib/libghostty-vt.dylib 2>/dev/null || \
-            install_name_tool -id "$(cd $PRIV_DIR/lib && pwd)/libghostty-vt.dylib" \
-              $PRIV_DIR/lib/libghostty-vt.0.1.0.dylib 2>/dev/null || true
-          fi
+          # Fix dylib install_name so the sema binary can find it at link time
+          for f in $PRIV_DIR/lib/libghostty-vt*.dylib; do
+            [ -f "$f" ] && install_name_tool -id "$(cd $PRIV_DIR/lib && pwd)/libghostty-vt.dylib" "$f" 2>/dev/null || true
+          done
 
-          GHOSTTY_BUILD=1 mix compile
+          DYLD_LIBRARY_PATH=$PRIV_DIR/lib GHOSTTY_BUILD=1 mix compile
 
       - name: Package artifact
         run: |
