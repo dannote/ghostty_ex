@@ -60,39 +60,40 @@ jobs:
           cp -R priv/lib/* $PRIV_DIR/lib/
           cp -R priv/include/* $PRIV_DIR/include/
 
+          # Fix dylib install_name for macOS so sema binary can find it
+          if [ -f "$PRIV_DIR/lib/libghostty-vt.dylib" ]; then
+            install_name_tool -id "$(cd $PRIV_DIR/lib && pwd)/libghostty-vt.dylib" \
+              $PRIV_DIR/lib/libghostty-vt.dylib 2>/dev/null || \
+            install_name_tool -id "$(cd $PRIV_DIR/lib && pwd)/libghostty-vt.dylib" \
+              $PRIV_DIR/lib/libghostty-vt.0.1.0.dylib 2>/dev/null || true
+          fi
+
           GHOSTTY_BUILD=1 mix compile
 
       - name: Package artifact
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           BASENAME="Elixir.Ghostty.Terminal.Nif"
+          BUILD_PRIV=_build/dev/lib/ghostty/priv/lib
 
-          LIB_FILE=$(find priv/lib -name "*${BASENAME}.*" \
+          LIB_FILE=$(find $BUILD_PRIV -name "*${BASENAME}.*" \
             \( -name "*.so" -o -name "*.dylib" \) \
             -not -name "*.[0-9]*" | sort | head -1)
 
           if [ -z "$LIB_FILE" ]; then
             echo "ERROR: Could not find built NIF library"
-            find priv/lib -type f | head -20
+            find _build -name "*${BASENAME}*" -type f 2>/dev/null | head -20
             exit 1
           fi
 
           echo "Found NIF: ${LIB_FILE}"
-
-          # Also include libghostty-vt alongside the NIF
-          GHOSTTY_LIB=$(find priv/lib -name "libghostty-vt.*" \
-            \( -name "*.so" -o -name "*.dylib" \) \
-            -not -name "*.[0-9]*" | sort | head -1)
-
-          echo "Found libghostty-vt: ${GHOSTTY_LIB}"
 
           mkdir -p artifacts
           ARTIFACT_NAME="${BASENAME}-v${VERSION}-${{ matrix.target }}.so.tar.gz"
 
           tar czf "artifacts/${ARTIFACT_NAME}" \
             -C "$(dirname "$LIB_FILE")" \
-            "$(basename "$LIB_FILE")" \
-            "$(basename "$GHOSTTY_LIB")"
+            "$(basename "$LIB_FILE")"
 
           echo "Packaged: ${ARTIFACT_NAME}"
 
