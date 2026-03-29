@@ -1,0 +1,56 @@
+# AGENTS.md
+
+## Build
+
+```sh
+GHOSTTY_BUILD=1 mix compile   # build NIF from source (requires Zig 0.15+)
+mix compile                   # use precompiled NIF
+mix test                      # full suite (18 tests)
+```
+
+Set `GHOSTTY_BUILD=1` for any compilation that touches Zig code.
+
+libghostty-vt headers and dylib must be in `priv/` before building from source.
+See README for setup instructions.
+
+## Architecture
+
+Elixir → GenServer (`Terminal`) → Zig NIFs (`ghostty_nif.zig`) → libghostty-vt C API.
+
+- `lib/ghostty.ex` — top-level module doc
+- `lib/ghostty/terminal.ex` — GenServer, public API
+- `lib/ghostty/terminal/nif.ex` — ZiglerPrecompiled NIF declaration
+- `lib/ghostty/terminal/ghostty_nif.zig` — NIF implementation (C API bindings)
+- `lib/ghostty/key_event.ex` — keyboard input struct (Phase 2)
+- `lib/ghostty/mouse_event.ex` — mouse input struct (Phase 2)
+- `lib/mix/tasks/compile/ghostty_vt.ex` — optional: build libghostty-vt from source
+
+## Adding a NIF
+
+1. Add the function in `ghostty_nif.zig`
+2. Register it in `nif.ex` under `nifs:` (name: arity)
+3. Add the Elixir wrapper in `terminal.ex`
+
+## Release
+
+1. Bump `@version` in `mix.exs`
+2. Update `CHANGELOG.md` (rename "Unreleased" → version)
+3. Set placeholder checksums in `checksum-Ghostty.Terminal.Nif.exs`
+4. Commit: `git commit -m "Release vX.Y.Z"`
+5. Tag and push: `git tag vX.Y.Z && git push && git push --tags`
+6. Wait for the precompile workflow (builds NIFs for linux-x64, linux-arm64, macos-arm64)
+7. Download artifacts, compute checksums:
+   ```sh
+   gh release download vX.Y.Z --dir /tmp/release
+   for f in /tmp/release/*.tar.gz; do
+     echo "{\"$(basename $f)\", \"sha256:$(shasum -a 256 $f | cut -d' ' -f1)\"},"
+   done
+   ```
+8. Update `checksum-Ghostty.Terminal.Nif.exs` with real hashes
+9. Commit and push: `git commit -am "Update precompiled NIF checksums for vX.Y.Z" && git push`
+10. Publish: `mix hex.publish`
+
+**Never force-push a release tag.** The precompile workflow runs on tag push.
+Force-pushing re-triggers it, producing new artifacts with different checksums
+than what was already published to Hex. If you need to fix a release, publish
+a patch version instead.
