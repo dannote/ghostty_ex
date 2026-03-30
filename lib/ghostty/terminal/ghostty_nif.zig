@@ -24,7 +24,7 @@ fn on_write_pty(terminal: g.GhosttyTerminal, userdata: ?*anyopaque, data_ptr: [*
     const pid = td.owner_pid orelse return;
     const slice = if (len > 0) data_ptr[0..len] else &[_]u8{};
     const env = beam.alloc_env();
-    beam.send(pid, .{ .ghostty_pty_write, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
+    beam.send(pid, .{ .pty_write, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
     beam.free_env(env);
 }
 
@@ -33,7 +33,7 @@ fn on_bell(terminal: g.GhosttyTerminal, userdata: ?*anyopaque) callconv(.c) void
     const td: *TerminalData = @ptrCast(@alignCast(userdata orelse return));
     const pid = td.owner_pid orelse return;
     const env = beam.alloc_env();
-    beam.send(pid, .{.ghostty_bell}, .{ .env = env }) catch {};
+    beam.send(pid, .bell, .{ .env = env }) catch {};
     beam.free_env(env);
 }
 
@@ -42,7 +42,7 @@ fn on_title_changed(terminal: g.GhosttyTerminal, userdata: ?*anyopaque) callconv
     const td: *TerminalData = @ptrCast(@alignCast(userdata orelse return));
     const pid = td.owner_pid orelse return;
     const env = beam.alloc_env();
-    beam.send(pid, .{.ghostty_title_changed}, .{ .env = env }) catch {};
+    beam.send(pid, .title_changed, .{ .env = env }) catch {};
     beam.free_env(env);
 }
 

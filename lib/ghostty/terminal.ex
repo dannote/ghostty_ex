@@ -340,17 +340,17 @@ defmodule Ghostty.Terminal do
   end
 
   @impl true
-  def handle_info({:ghostty_pty_write, data}, state) do
+  def handle_info({:pty_write, data}, state) do
     if state.on_output, do: state.on_output.(data)
     {:noreply, state}
   end
 
-  def handle_info({:ghostty_bell}, state) do
+  def handle_info(:bell, state) do
     if state.on_bell, do: state.on_bell.()
     {:noreply, state}
   end
 
-  def handle_info({:ghostty_title_changed}, state) do
+  def handle_info(:title_changed, state) do
     if state.on_title, do: state.on_title.("")
     {:noreply, state}
   end
