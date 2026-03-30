@@ -26,31 +26,9 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
-      - name: Build libghostty-vt
-        run: |
-          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
-          cd /tmp/ghostty-src
-          zig build -Demit-lib-vt -Doptimize=ReleaseFast
-
-          mkdir -p priv/lib priv/include
-          cp -R /tmp/ghostty-src/zig-out/include/ghostty priv/include/
-          cp /tmp/ghostty-src/zig-out/lib/libghostty-vt.* priv/lib/ 2>/dev/null || true
-
       - run: mix deps.get
-
-      - name: Compile
-        run: |
-          PRIV_DIR=_build/dev/lib/ghostty/priv
-          mkdir -p $PRIV_DIR/lib $PRIV_DIR/include
-          cp -R priv/lib/* $PRIV_DIR/lib/
-          cp -R priv/include/* $PRIV_DIR/include/
-          GHOSTTY_BUILD=1 mix compile --warnings-as-errors
-
-          # Also populate test priv
-          TEST_PRIV=_build/test/lib/ghostty/priv
-          mkdir -p $TEST_PRIV/lib $TEST_PRIV/include
-          cp -R priv/lib/* $TEST_PRIV/lib/
-          cp -R priv/include/* $TEST_PRIV/include/
+      - run: mix ghostty.setup
+      - run: GHOSTTY_BUILD=1 mix compile --warnings-as-errors
       - run: mix format --check-formatted
       - run: mix credo --strict
       - run: mix ex_dna

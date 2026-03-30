@@ -3,15 +3,19 @@
 ## Build
 
 ```sh
-GHOSTTY_BUILD=1 mix compile   # build NIF from source (requires Zig 0.15+)
-mix compile                   # use precompiled NIF
-mix test                      # full suite (18 tests)
+mix ghostty.setup              # clone Ghostty, build libghostty-vt into priv/
+GHOSTTY_BUILD=1 mix compile    # build NIF from source (requires Zig 0.15+)
+mix test                       # full suite (35 tests)
+```
+
+Or use a local Ghostty checkout:
+
+```sh
+GHOSTTY_SOURCE_DIR=~/code/ghostty mix ghostty.setup
 ```
 
 Set `GHOSTTY_BUILD=1` for any compilation that touches Zig code.
-
-libghostty-vt headers and dylib must be in `priv/` before building from source.
-See README for setup instructions.
+Without it, precompiled NIF binaries are downloaded from GitHub releases.
 
 ## Architecture
 
@@ -21,9 +25,12 @@ Elixir → GenServer (`Terminal`) → Zig NIFs (`ghostty_nif.zig`) → libghostt
 - `lib/ghostty/terminal.ex` — GenServer, public API
 - `lib/ghostty/terminal/nif.ex` — ZiglerPrecompiled NIF declaration
 - `lib/ghostty/terminal/ghostty_nif.zig` — NIF implementation (C API bindings)
-- `lib/ghostty/key_event.ex` — keyboard input struct (Phase 2)
-- `lib/ghostty/mouse_event.ex` — mouse input struct (Phase 2)
-- `lib/mix/tasks/compile/ghostty_vt.ex` — optional: build libghostty-vt from source
+- `lib/ghostty/terminal/cell.ex` — cell flag helpers
+- `lib/ghostty/key_event.ex` — keyboard input struct + key code mapping
+- `lib/ghostty/mouse_event.ex` — mouse input struct
+- `lib/ghostty/pty.ex` — subprocess I/O via Erlang ports
+- `lib/mix/tasks/ghostty.setup.ex` — builds libghostty-vt from source
+- `lib/mix/tasks/compile/ghostty_vt.ex` — copies priv/ into _build priv/
 
 ## Adding a NIF
 

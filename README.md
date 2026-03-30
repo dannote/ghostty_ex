@@ -11,18 +11,18 @@ full Unicode, 24-bit color, scrollback with text reflow. Terminals are GenServer
 Precompiled NIF binaries are downloaded automatically for supported platforms
 (x86_64 Linux, aarch64 Linux, aarch64 macOS).
 
-To build from source instead, set `GHOSTTY_BUILD=1` and ensure
-[Zig 0.15+](https://ziglang.org) is on PATH. libghostty-vt headers and library
-must be in `priv/`:
+To build from source instead, you need [Zig 0.15+](https://ziglang.org):
 
 ```bash
-cd /path/to/ghostty
-zig build -Demit-lib-vt -Doptimize=ReleaseFast
+mix ghostty.setup              # clones Ghostty, builds libghostty-vt
+GHOSTTY_BUILD=1 mix compile    # builds the NIF from source
+mix test
+```
 
-# Copy into your project
-mkdir -p priv/lib priv/include
-cp zig-out/lib/libghostty-vt.* priv/lib/
-cp -R zig-out/include/ghostty priv/include/ghostty
+Or point at an existing Ghostty checkout:
+
+```bash
+GHOSTTY_SOURCE_DIR=~/code/ghostty mix ghostty.setup
 ```
 
 ## Installation

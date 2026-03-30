@@ -9,4 +9,6 @@ ghostty-*.tar
 .zig-cache/
 zig-out/
 output.html
+/priv/lib/
+/priv/include/
 lib/ghostty/terminal/.Elixir.Ghostty.Terminal.Nif.zig
