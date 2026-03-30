@@ -3,8 +3,8 @@ defmodule Ghostty.PTY do
   Manages a subprocess with piped stdio.
 
   Wraps an Erlang port for basic subprocess I/O. Output is sent as
-  `{:data, binary}` messages to the subscriber (defaults to the process
-  that called `start_link/1`). Exit is reported as `{:exit, status}`.
+  `{:data, binary}` messages to the calling process. Exit is reported
+  as `{:exit, status}`.
 
   This provides stdin/stdout piping but not a true pseudo-terminal —
   programs that require a TTY (like `vim` or `top`) won't work correctly.
@@ -31,28 +31,27 @@ defmodule Ghostty.PTY do
           {:cmd, Path.t()}
           | {:args, [String.t()]}
           | {:env, [{String.t(), String.t()}]}
-          | {:subscriber, pid()}
           | {:name, GenServer.name()}
 
-  defstruct [:port, :subscriber]
+  defstruct [:port, :owner]
 
   @doc """
   Starts a PTY process linked to the caller.
+
+  Output and exit messages are sent to the calling process.
 
   ## Options
 
     * `:cmd` — command to run (default: `$SHELL` or `/bin/sh`)
     * `:args` — argument list (default: `[]`)
     * `:env` — environment as `[{"KEY", "VALUE"}]` (default: `[{"TERM", "xterm-256color"}]`)
-    * `:subscriber` — pid to receive `{:data, binary}` and `{:exit, status}` messages
-      (default: the calling process)
     * `:name` — GenServer name registration
 
   """
   @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
     {server_opts, init_opts} = Keyword.split(opts, [:name])
-    init_opts = Keyword.put_new(init_opts, :subscriber, self())
+    init_opts = Keyword.put(init_opts, :owner, self())
     GenServer.start_link(__MODULE__, init_opts, server_opts)
   end
 
@@ -73,7 +72,7 @@ defmodule Ghostty.PTY do
     cmd = Keyword.get(opts, :cmd, System.get_env("SHELL") || "/bin/sh")
     args = Keyword.get(opts, :args, [])
     env = Keyword.get(opts, :env, [{"TERM", "xterm-256color"}])
-    subscriber = Keyword.fetch!(opts, :subscriber)
+    owner = Keyword.fetch!(opts, :owner)
 
     env_charlist = Enum.map(env, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
 
@@ -87,7 +86,7 @@ defmodule Ghostty.PTY do
         {:env, env_charlist}
       ])
 
-    {:ok, %__MODULE__{port: port, subscriber: subscriber}}
+    {:ok, %__MODULE__{port: port, owner: owner}}
   end
 
   @impl true
@@ -98,12 +97,12 @@ defmodule Ghostty.PTY do
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    send(state.subscriber, {:data, data})
+    send(state.owner, {:data, data})
     {:noreply, state}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    send(state.subscriber, {:exit, status})
+    send(state.owner, {:exit, status})
     {:stop, :normal, state}
   end
 end

@@ -22,13 +22,11 @@ defmodule Ghostty.Terminal do
 
   Terminal programs can trigger side effects via VT sequences (query
   responses, bell, title changes). These are forwarded as messages to
-  the `:subscriber` process:
+  the process that called `start_link/1`:
 
     * `{:pty_write, binary}` — query responses to write back to the PTY
     * `:bell` — BEL character
     * `:title_changed` — title change via OSC 2
-
-  If no subscriber is set, effects are silently dropped.
 
   ## Snapshot formats
 
@@ -50,10 +48,9 @@ defmodule Ghostty.Terminal do
           {:cols, pos_integer()}
           | {:rows, pos_integer()}
           | {:max_scrollback, non_neg_integer()}
-          | {:subscriber, pid()}
           | {:name, GenServer.name()}
 
-  defstruct [:ref, :cols, :rows, :subscriber]
+  defstruct [:ref, :cols, :rows]
 
   @doc """
   Starts a terminal process linked to the caller.
@@ -63,13 +60,13 @@ defmodule Ghostty.Terminal do
     * `:cols` - number of columns (default: `80`)
     * `:rows` - number of rows (default: `24`)
     * `:max_scrollback` - maximum scrollback lines (default: `10_000`)
-    * `:subscriber` - pid to receive effect messages (default: none)
     * `:name` - GenServer name registration
 
   """
   @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
     {server_opts, init_opts} = Keyword.split(opts, [:name])
+    init_opts = Keyword.put(init_opts, :owner, self())
     GenServer.start_link(__MODULE__, init_opts, server_opts)
   end
 
@@ -246,15 +243,10 @@ defmodule Ghostty.Terminal do
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
     max_scrollback = Keyword.get(opts, :max_scrollback, 10_000)
-    subscriber = Keyword.get(opts, :subscriber)
-
     ref = Nif.nif_new(cols, rows, max_scrollback)
+    Nif.nif_set_effect_pid(ref, Keyword.fetch!(opts, :owner))
 
-    if subscriber do
-      Nif.nif_set_effect_pid(ref, subscriber)
-    end
-
-    {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows, subscriber: subscriber}}
+    {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows}}
   end
 
   @impl true
