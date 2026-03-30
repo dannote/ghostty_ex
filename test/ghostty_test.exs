@@ -203,21 +203,21 @@ defmodule GhosttyTest do
     end
   end
 
-  describe "effect callbacks" do
+  describe "effects" do
     test "bell callback fires on BEL character" do
       test_pid = self()
-      {:ok, term} = Terminal.start_link(on_bell: fn -> send(test_pid, :bell_received) end)
+      {:ok, term} = Terminal.start_link(subscriber: test_pid)
       Terminal.write(term, "\a")
-      assert_receive :bell_received, 100
+      assert_receive :bell, 100
       GenServer.stop(term)
     end
 
     test "write_pty callback fires on DA query" do
       test_pid = self()
-      {:ok, term} = Terminal.start_link(on_output: fn _data -> send(test_pid, :pty_write_received) end)
+      {:ok, term} = Terminal.start_link(subscriber: test_pid)
       # Send a Device Attributes query (CSI c) — triggers a write-back response
       Terminal.write(term, "\e[c")
-      assert_receive :pty_write_received, 100
+      assert_receive {:pty_write, _data}, 100
       GenServer.stop(term)
     end
   end
@@ -277,13 +277,12 @@ defmodule GhosttyTest do
         Ghostty.PTY.start_link(
           cmd: "/bin/echo",
           args: ["hello_from_pty"],
-          on_data: fn data -> send(test_pid, {:data, data}) end,
-          on_exit: fn _status -> send(test_pid, :exited) end
+          subscriber: test_pid
         )
 
       assert_receive {:data, data}, 2_000
       assert data =~ "hello_from_pty"
-      assert_receive :exited, 2_000
+      assert_receive {:exit, _status}, 2_000
       refute Process.alive?(pty)
     end
 
@@ -293,7 +292,7 @@ defmodule GhosttyTest do
       {:ok, pty} =
         Ghostty.PTY.start_link(
           cmd: "/bin/cat",
-          on_data: fn data -> send(test_pid, {:data, data}) end
+          subscriber: test_pid
         )
 
       Ghostty.PTY.write(pty, "echo_this\n")

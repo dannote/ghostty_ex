@@ -8,38 +8,33 @@ defmodule Ghostty.Terminal do
 
   ## Examples
 
-      # Simple usage
       {:ok, term} = Ghostty.Terminal.start_link(cols: 120, rows: 40)
       Ghostty.Terminal.write(term, File.read!("recording.vt"))
       {:ok, html} = Ghostty.Terminal.snapshot(term, :html)
 
-      # With PTY write-back
-      {:ok, term} = Ghostty.Terminal.start_link(
-        cols: 80, rows: 24,
-        on_output: fn data -> IO.write(data) end
-      )
+  ## Supervision
 
-      # Supervised
       children = [
         {Ghostty.Terminal, name: :main, cols: 80, rows: 24, max_scrollback: 50_000}
       ]
 
-  ## Formats
+  ## Effects
 
-  The `:snapshot` function supports three output formats:
+  Terminal programs can trigger side effects via VT sequences (query
+  responses, bell, title changes). These are forwarded as messages to
+  the `:subscriber` process:
+
+    * `{:pty_write, binary}` — query responses to write back to the PTY
+    * `:bell` — BEL character
+    * `:title_changed` — title change via OSC 2
+
+  If no subscriber is set, effects are silently dropped.
+
+  ## Snapshot formats
 
     * `:plain` — plain text with all styling stripped
     * `:html` — HTML with inline styles preserving all colors and attributes
     * `:vt` — raw VT escape sequences (round-trippable)
-
-  ## Callbacks
-
-  Terminal programs can trigger side effects via VT sequences. Register
-  callbacks to handle them:
-
-    * `:on_output` — PTY write-back (query responses, DA replies)
-    * `:on_bell` — BEL character
-    * `:on_title` — OSC 2 title change
 
   """
 
@@ -49,16 +44,16 @@ defmodule Ghostty.Terminal do
 
   @type format :: :plain | :html | :vt
 
+  @type cell :: {binary(), {byte(), byte(), byte()} | nil, {byte(), byte(), byte()} | nil, non_neg_integer()}
+
   @type option ::
           {:cols, pos_integer()}
           | {:rows, pos_integer()}
           | {:max_scrollback, non_neg_integer()}
-          | {:on_output, (binary() -> any())}
-          | {:on_bell, (-> any())}
-          | {:on_title, (String.t() -> any())}
+          | {:subscriber, pid()}
           | {:name, GenServer.name()}
 
-  defstruct [:ref, :cols, :rows, :on_output, :on_bell, :on_title]
+  defstruct [:ref, :cols, :rows, :subscriber]
 
   @doc """
   Starts a terminal process linked to the caller.
@@ -68,15 +63,8 @@ defmodule Ghostty.Terminal do
     * `:cols` - number of columns (default: `80`)
     * `:rows` - number of rows (default: `24`)
     * `:max_scrollback` - maximum scrollback lines (default: `10_000`)
-    * `:on_output` - callback `(binary -> any)` for PTY write-back
-    * `:on_bell` - callback `(-> any)` for BEL character
-    * `:on_title` - callback `(String.t -> any)` for title changes
+    * `:subscriber` - pid to receive effect messages (default: none)
     * `:name` - GenServer name registration
-
-  ## Examples
-
-      Ghostty.Terminal.start_link(cols: 120, rows: 40)
-      Ghostty.Terminal.start_link(name: :console, max_scrollback: 50_000)
 
   """
   @spec start_link([option()]) :: GenServer.on_start()
@@ -156,6 +144,30 @@ defmodule Ghostty.Terminal do
   end
 
   @doc """
+  Returns the terminal screen as a grid of cells.
+
+  Each cell is `{grapheme, fg, bg, flags}` where:
+
+    * `grapheme` — UTF-8 binary (empty for blank cells)
+    * `fg` / `bg` — `{r, g, b}` tuples or `nil`
+    * `flags` — bitmask (see `Ghostty.Terminal.Cell` for helpers)
+
+  ## Examples
+
+      rows = Ghostty.Terminal.cells(term)
+
+      for row <- rows, {char, fg, _bg, flags} <- row, char != "" do
+        if Ghostty.Terminal.Cell.bold?({char, fg, nil, flags}), do: IO.write("*")
+        IO.write(char)
+      end
+
+  """
+  @spec cells(GenServer.server()) :: [[cell()]]
+  def cells(terminal) do
+    GenServer.call(terminal, :cells)
+  end
+
+  @doc """
   Encodes a key event into a terminal escape sequence.
 
   Returns `{:ok, sequence}` with the bytes to send to the PTY,
@@ -169,9 +181,6 @@ defmodule Ghostty.Terminal do
       Ghostty.Terminal.input_key(term, %Ghostty.KeyEvent{key: :c, mods: [:ctrl]})
       # => {:ok, <<3>>}
 
-      Ghostty.Terminal.input_key(term, %Ghostty.KeyEvent{key: :arrow_up})
-      # => {:ok, "\\e[A"}
-
   """
   @spec input_key(GenServer.server(), Ghostty.KeyEvent.t()) :: {:ok, binary()} | :none
   def input_key(terminal, %Ghostty.KeyEvent{} = event) do
@@ -183,13 +192,6 @@ defmodule Ghostty.Terminal do
 
   Returns `{:ok, sequence}` or `:none` if mouse tracking is not
   enabled by the running program.
-
-  ## Examples
-
-      Ghostty.Terminal.input_mouse(term, %Ghostty.MouseEvent{
-        action: :press, button: :left, x: 10.0, y: 5.0
-      })
-
   """
   @spec input_mouse(GenServer.server(), Ghostty.MouseEvent.t()) :: {:ok, binary()} | :none
   def input_mouse(terminal, %Ghostty.MouseEvent{} = event) do
@@ -197,17 +199,12 @@ defmodule Ghostty.Terminal do
   end
 
   @doc """
-  Encodes a focus gained/lost event into a terminal escape sequence.
-
-  Returns `{:ok, sequence}` with `CSI I` (gained) or `CSI O` (lost).
+  Encodes a focus event into a terminal escape sequence.
 
   ## Examples
 
-      Ghostty.Terminal.encode_focus(true)
-      # => {:ok, "\\e[I"}
-
-      Ghostty.Terminal.encode_focus(false)
-      # => {:ok, "\\e[O"}
+      {:ok, seq} = Ghostty.Terminal.encode_focus(true)   # => "\\e[I"
+      {:ok, seq} = Ghostty.Terminal.encode_focus(false)  # => "\\e[O"
 
   """
   @spec encode_focus(boolean()) :: {:ok, binary()} | :none
@@ -216,38 +213,10 @@ defmodule Ghostty.Terminal do
   end
 
   @doc """
-  Returns the terminal screen as a grid of cells.
-
-  Each cell is `{grapheme, fg, bg, flags}` where:
-
-    * `grapheme` — UTF-8 binary (empty for blank cells)
-    * `fg` / `bg` — `{r, g, b}` tuples or `nil`
-    * `flags` — bitmask (see `Ghostty.Terminal.Cell` for helpers)
-
-  ## Examples
-
-      cells = Ghostty.Terminal.cells(term)
-      first_cell = cells |> List.first() |> List.first()
-      Ghostty.Terminal.Cell.grapheme(first_cell)
-      # => "H"
-
-  """
-  @spec cells(GenServer.server()) :: [[Ghostty.Terminal.Cell.t()]]
-  def cells(terminal) do
-    GenServer.call(terminal, :cells)
-  end
-
-  @doc """
   Scrolls the terminal viewport.
 
   Positive `delta` scrolls down (towards newer content),
   negative scrolls up (towards scrollback history).
-
-  ## Examples
-
-      Ghostty.Terminal.scroll(term, -10)  # scroll up 10 lines
-      Ghostty.Terminal.scroll(term, 5)    # scroll down 5 lines
-
   """
   @spec scroll(GenServer.server(), integer()) :: :ok
   def scroll(terminal, delta) do
@@ -256,11 +225,6 @@ defmodule Ghostty.Terminal do
 
   @doc """
   Returns the current cursor position as `{col, row}` (0-indexed).
-
-  ## Examples
-
-      {col, row} = Ghostty.Terminal.cursor(term)
-
   """
   @spec cursor(GenServer.server()) :: {non_neg_integer(), non_neg_integer()}
   def cursor(terminal) do
@@ -282,20 +246,15 @@ defmodule Ghostty.Terminal do
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
     max_scrollback = Keyword.get(opts, :max_scrollback, 10_000)
+    subscriber = Keyword.get(opts, :subscriber)
 
     ref = Nif.nif_new(cols, rows, max_scrollback)
-    Nif.nif_set_effect_pid(ref, self())
 
-    state = %__MODULE__{
-      ref: ref,
-      cols: cols,
-      rows: rows,
-      on_output: Keyword.get(opts, :on_output),
-      on_bell: Keyword.get(opts, :on_bell),
-      on_title: Keyword.get(opts, :on_title)
-    }
+    if subscriber do
+      Nif.nif_set_effect_pid(ref, subscriber)
+    end
 
-    {:ok, state}
+    {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows, subscriber: subscriber}}
   end
 
   @impl true
@@ -325,8 +284,7 @@ defmodule Ghostty.Terminal do
   end
 
   def handle_call(:cursor, _from, state) do
-    pos = Nif.nif_get_cursor(state.ref)
-    {:reply, pos, state}
+    {:reply, Nif.nif_get_cursor(state.ref), state}
   end
 
   def handle_call(:size, _from, state) do
@@ -334,8 +292,7 @@ defmodule Ghostty.Terminal do
   end
 
   def handle_call(:cells, _from, state) do
-    result = Nif.nif_render_cells(state.ref)
-    {:reply, result, state}
+    {:reply, Nif.nif_render_cells(state.ref), state}
   end
 
   def handle_call({:input_key, event}, _from, state) do
@@ -364,21 +321,5 @@ defmodule Ghostty.Terminal do
       )
 
     {:reply, result, state}
-  end
-
-  @impl true
-  def handle_info({:pty_write, data}, state) do
-    if state.on_output, do: state.on_output.(data)
-    {:noreply, state}
-  end
-
-  def handle_info(:bell, state) do
-    if state.on_bell, do: state.on_bell.()
-    {:noreply, state}
-  end
-
-  def handle_info(:title_changed, state) do
-    if state.on_title, do: state.on_title.("")
-    {:noreply, state}
   end
 end

@@ -122,13 +122,14 @@ Run a subprocess and pipe its output through the terminal:
 
 ```elixir
 {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-{:ok, pty} = Ghostty.PTY.start_link(
-  cmd: "/bin/bash",
-  on_data: fn data -> Ghostty.Terminal.write(term, data) end
-)
+{:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
 
-Ghostty.PTY.write(pty, "ls --color\n")
-Process.sleep(100)
+receive do
+  {:data, data} -> Ghostty.Terminal.write(term, data)
+after
+  1_000 -> :timeout
+end
+
 {:ok, html} = Ghostty.Terminal.snapshot(term, :html)
 ```
 
