@@ -231,6 +231,107 @@ pub fn nif_encode_focus(gained: bool) !beam.term {
     return beam.make(.{ .ok, buf[0..written] }, .{});
 }
 
+pub fn nif_render_cells(res: TerminalResource) !beam.term {
+    const t = res.unpack().terminal;
+
+    var state: g.GhosttyRenderState = undefined;
+    if (g.ghostty_render_state_new(null, &state) != g.GHOSTTY_SUCCESS)
+        return error.render_state_failed;
+    defer g.ghostty_render_state_free(state);
+
+    if (g.ghostty_render_state_update(state, t) != g.GHOSTTY_SUCCESS)
+        return error.render_update_failed;
+
+    var row_iter: g.GhosttyRenderStateRowIterator = undefined;
+    if (g.ghostty_render_state_row_iterator_new(null, &row_iter) != g.GHOSTTY_SUCCESS)
+        return error.row_iterator_failed;
+    defer g.ghostty_render_state_row_iterator_free(row_iter);
+
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, @ptrCast(&row_iter));
+
+    var row_cells: g.GhosttyRenderStateRowCells = undefined;
+    if (g.ghostty_render_state_row_cells_new(null, &row_cells) != g.GHOSTTY_SUCCESS)
+        return error.row_cells_failed;
+    defer g.ghostty_render_state_row_cells_free(row_cells);
+
+    var num_cols: u16 = 0;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_COLS, &num_cols);
+    var num_rows: u16 = 0;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_ROWS, &num_rows);
+
+    const rows_list = beam.allocator.alloc(beam.term, num_rows) catch return error.out_of_memory;
+    defer beam.allocator.free(rows_list);
+
+    var row_idx: u16 = 0;
+    while (g.ghostty_render_state_row_iterator_next(row_iter)) : (row_idx += 1) {
+        _ = g.ghostty_render_state_row_get(row_iter, g.GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, @ptrCast(&row_cells));
+
+        const cells_list = beam.allocator.alloc(beam.term, num_cols) catch return error.out_of_memory;
+        defer beam.allocator.free(cells_list);
+
+        var col_idx: u16 = 0;
+        while (g.ghostty_render_state_row_cells_next(row_cells)) : (col_idx += 1) {
+            if (col_idx >= num_cols) break;
+
+            // Get grapheme
+            var grapheme_len: u32 = 0;
+            _ = g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &grapheme_len);
+
+            var char_term: beam.term = beam.make("", .{});
+            if (grapheme_len > 0) {
+                var cp_buf: [16]u32 = undefined;
+                const cp_count = @min(grapheme_len, 16);
+                _ = g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &cp_buf);
+
+                var utf8_buf: [64]u8 = undefined;
+                var utf8_len: usize = 0;
+                for (cp_buf[0..cp_count]) |cp| {
+                    const n = std.unicode.utf8Encode(@intCast(cp), utf8_buf[utf8_len..]) catch break;
+                    utf8_len += n;
+                }
+                char_term = beam.make(utf8_buf[0..utf8_len], .{});
+            }
+
+            // Get resolved colors
+            var fg_term: beam.term = beam.make(.nil, .{});
+            var bg_term: beam.term = beam.make(.nil, .{});
+
+            var fg_color: g.GhosttyColorRgb = undefined;
+            if (g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fg_color) == g.GHOSTTY_SUCCESS) {
+                fg_term = beam.make(.{ fg_color.r, fg_color.g, fg_color.b }, .{});
+            }
+
+            var bg_color: g.GhosttyColorRgb = undefined;
+            if (g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bg_color) == g.GHOSTTY_SUCCESS) {
+                bg_term = beam.make(.{ bg_color.r, bg_color.g, bg_color.b }, .{});
+            }
+
+            // Get style flags
+            var style: g.GhosttyStyle = std.mem.zeroes(g.GhosttyStyle);
+            style.size = @sizeOf(g.GhosttyStyle);
+            _ = g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
+
+            var flags: u16 = 0;
+            if (style.bold) flags |= 1;
+            if (style.italic) flags |= 2;
+            if (style.faint) flags |= 4;
+            if (style.underline != 0) flags |= 8;
+            if (style.strikethrough) flags |= 16;
+            if (style.inverse) flags |= 32;
+            if (style.blink) flags |= 64;
+            if (style.overline) flags |= 128;
+
+            cells_list[col_idx] = beam.make(.{ char_term, fg_term, bg_term, flags }, .{});
+        }
+
+        if (row_idx < num_rows) {
+            rows_list[row_idx] = beam.make(cells_list[0..col_idx], .{});
+        }
+    }
+
+    return beam.make(rows_list[0..row_idx], .{});
+}
+
 fn eql(a: []const u8, comptime b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }

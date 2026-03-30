@@ -216,6 +216,28 @@ defmodule Ghostty.Terminal do
   end
 
   @doc """
+  Returns the terminal screen as a grid of cells.
+
+  Each cell is `{grapheme, fg, bg, flags}` where:
+
+    * `grapheme` — UTF-8 binary (empty for blank cells)
+    * `fg` / `bg` — `{r, g, b}` tuples or `nil`
+    * `flags` — bitmask (see `Ghostty.Terminal.Cell` for helpers)
+
+  ## Examples
+
+      cells = Ghostty.Terminal.cells(term)
+      first_cell = cells |> List.first() |> List.first()
+      Ghostty.Terminal.Cell.grapheme(first_cell)
+      # => "H"
+
+  """
+  @spec cells(GenServer.server()) :: [[Ghostty.Terminal.Cell.t()]]
+  def cells(terminal) do
+    GenServer.call(terminal, :cells)
+  end
+
+  @doc """
   Scrolls the terminal viewport.
 
   Positive `delta` scrolls down (towards newer content),
@@ -309,6 +331,11 @@ defmodule Ghostty.Terminal do
 
   def handle_call(:size, _from, state) do
     {:reply, {state.cols, state.rows}, state}
+  end
+
+  def handle_call(:cells, _from, state) do
+    result = Nif.nif_render_cells(state.ref)
+    {:reply, result, state}
   end
 
   def handle_call({:input_key, event}, _from, state) do

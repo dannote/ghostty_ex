@@ -98,14 +98,39 @@ See the [`examples/`](examples/) directory:
 | [`expect.exs`](examples/expect.exs) | Expect-like automation with pattern matching |
 | [`pool.exs`](examples/pool.exs) | Reusable terminal pool for concurrent processing |
 
-## Roadmap
+## Render state
 
-- [x] Key encoding via `ghostty_key_encoder` NIF
-- [x] Mouse encoding via `ghostty_mouse_encoder` NIF
-- [x] Effect callbacks (PTY write-back, bell, title)
-- [x] Focus encoding
-- [ ] Render state API (cell-level iteration for LiveView)
-- [ ] PTY module (`forkpty` + non-blocking I/O)
+Read the screen as a grid of cells for building custom renderers (LiveView, Scenic, etc.):
+
+```elixir
+rows = Ghostty.Terminal.cells(term)
+
+for row <- rows do
+  for {grapheme, fg, bg, flags} <- row do
+    if Ghostty.Terminal.Cell.bold?({grapheme, fg, bg, flags}) do
+      IO.write(IO.ANSI.bright())
+    end
+    IO.write(grapheme)
+  end
+  IO.puts("")
+end
+```
+
+## PTY
+
+Run a subprocess and pipe its output through the terminal:
+
+```elixir
+{:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
+{:ok, pty} = Ghostty.PTY.start_link(
+  cmd: "/bin/bash",
+  on_data: fn data -> Ghostty.Terminal.write(term, data) end
+)
+
+Ghostty.PTY.write(pty, "ls --color\n")
+Process.sleep(100)
+{:ok, html} = Ghostty.Terminal.snapshot(term, :html)
+```
 
 ## License
 
