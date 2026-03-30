@@ -16,8 +16,8 @@ defmodule Ghostty.MouseEvent do
           :left
           | :right
           | :middle
-          | :scroll_up
-          | :scroll_down
+          | :four
+          | :five
           | nil
 
   @type modifier :: :shift | :ctrl | :alt | :super
@@ -35,4 +35,23 @@ defmodule Ghostty.MouseEvent do
             mods: [],
             x: 0.0,
             y: 0.0
+
+  @action_map %{press: 0, release: 1, motion: 2}
+
+  @button_map %{left: 1, right: 2, middle: 3, four: 4, five: 5}
+
+  @mod_bits %{shift: 1, ctrl: 2, alt: 4, super: 8}
+
+  @doc false
+  def action_to_int(action), do: Map.fetch!(@action_map, action)
+
+  @doc false
+  def button_to_int(nil), do: 0
+  def button_to_int(button), do: Map.get(@button_map, button, 0)
+
+  @doc false
+  def mods_to_bitmask(mods) do
+    import Bitwise
+    Enum.reduce(mods, 0, fn mod, acc -> acc ||| Map.get(@mod_bits, mod, 0) end)
+  end
 end

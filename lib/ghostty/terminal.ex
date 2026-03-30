@@ -161,9 +161,6 @@ defmodule Ghostty.Terminal do
   Returns `{:ok, sequence}` with the bytes to send to the PTY,
   or `:none` if the key event produces no output.
 
-  If `:on_output` is configured, the sequence is also automatically
-  forwarded to the callback.
-
   ## Examples
 
       Ghostty.Terminal.input_key(term, %Ghostty.KeyEvent{key: :enter})
@@ -197,6 +194,25 @@ defmodule Ghostty.Terminal do
   @spec input_mouse(GenServer.server(), Ghostty.MouseEvent.t()) :: {:ok, binary()} | :none
   def input_mouse(terminal, %Ghostty.MouseEvent{} = event) do
     GenServer.call(terminal, {:input_mouse, event})
+  end
+
+  @doc """
+  Encodes a focus gained/lost event into a terminal escape sequence.
+
+  Returns `{:ok, sequence}` with `CSI I` (gained) or `CSI O` (lost).
+
+  ## Examples
+
+      Ghostty.Terminal.encode_focus(true)
+      # => {:ok, "\\e[I"}
+
+      Ghostty.Terminal.encode_focus(false)
+      # => {:ok, "\\e[O"}
+
+  """
+  @spec encode_focus(boolean()) :: {:ok, binary()} | :none
+  def encode_focus(gained?) do
+    Nif.nif_encode_focus(gained?)
   end
 
   @doc """
@@ -246,6 +262,7 @@ defmodule Ghostty.Terminal do
     max_scrollback = Keyword.get(opts, :max_scrollback, 10_000)
 
     ref = Nif.nif_new(cols, rows, max_scrollback)
+    Nif.nif_set_effect_pid(ref, self())
 
     state = %__MODULE__{
       ref: ref,
@@ -294,14 +311,32 @@ defmodule Ghostty.Terminal do
     {:reply, {state.cols, state.rows}, state}
   end
 
-  def handle_call({:input_key, _event}, _from, state) do
-    # Phase 2: key encoding via NIF
-    {:reply, :none, state}
+  def handle_call({:input_key, event}, _from, state) do
+    result =
+      Nif.nif_encode_key(
+        state.ref,
+        Ghostty.KeyEvent.action_to_int(event.action),
+        Ghostty.KeyEvent.key_to_int(event.key),
+        Ghostty.KeyEvent.mods_to_bitmask(event.mods),
+        event.utf8 || "",
+        event.unshifted_codepoint || 0
+      )
+
+    {:reply, result, state}
   end
 
-  def handle_call({:input_mouse, _event}, _from, state) do
-    # Phase 2: mouse encoding via NIF
-    {:reply, :none, state}
+  def handle_call({:input_mouse, event}, _from, state) do
+    result =
+      Nif.nif_encode_mouse(
+        state.ref,
+        Ghostty.MouseEvent.action_to_int(event.action),
+        Ghostty.MouseEvent.button_to_int(event.button),
+        Ghostty.MouseEvent.mods_to_bitmask(event.mods),
+        event.x / 1,
+        event.y / 1
+      )
+
+    {:reply, result, state}
   end
 
   @impl true
@@ -315,8 +350,8 @@ defmodule Ghostty.Terminal do
     {:noreply, state}
   end
 
-  def handle_info({:ghostty_title, title}, state) do
-    if state.on_title, do: state.on_title.(title)
+  def handle_info({:ghostty_title_changed}, state) do
+    if state.on_title, do: state.on_title.("")
     {:noreply, state}
   end
 end

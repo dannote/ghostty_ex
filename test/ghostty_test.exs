@@ -139,6 +139,88 @@ defmodule GhosttyTest do
     end
   end
 
+  describe "input_key/2" do
+    test "encodes enter key" do
+      {:ok, term} = Terminal.start_link()
+      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :enter})
+      assert {:ok, seq} = result
+      assert seq == "\r"
+      GenServer.stop(term)
+    end
+
+    test "encodes letter key with utf8" do
+      {:ok, term} = Terminal.start_link()
+      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, utf8: "a", unshifted_codepoint: ?a})
+      assert {:ok, seq} = result
+      assert seq == "a"
+      GenServer.stop(term)
+    end
+
+    test "encodes ctrl+c" do
+      {:ok, term} = Terminal.start_link()
+      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :c, mods: [:ctrl], unshifted_codepoint: ?c})
+      assert {:ok, seq} = result
+      assert seq == <<3>>
+      GenServer.stop(term)
+    end
+
+    test "encodes arrow up" do
+      {:ok, term} = Terminal.start_link()
+      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :arrow_up})
+      assert {:ok, seq} = result
+      assert seq == "\e[A"
+      GenServer.stop(term)
+    end
+
+    test "encodes escape key" do
+      {:ok, term} = Terminal.start_link()
+      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :escape})
+      assert {:ok, seq} = result
+      assert seq == "\e"
+      GenServer.stop(term)
+    end
+  end
+
+  describe "input_mouse/2" do
+    test "returns :none when mouse tracking disabled" do
+      {:ok, term} = Terminal.start_link()
+      result = Terminal.input_mouse(term, %Ghostty.MouseEvent{action: :press, button: :left, x: 10.0, y: 5.0})
+      assert result == :none
+      GenServer.stop(term)
+    end
+  end
+
+  describe "encode_focus/1" do
+    test "encodes focus gained" do
+      assert {:ok, seq} = Terminal.encode_focus(true)
+      assert seq == "\e[I"
+    end
+
+    test "encodes focus lost" do
+      assert {:ok, seq} = Terminal.encode_focus(false)
+      assert seq == "\e[O"
+    end
+  end
+
+  describe "effect callbacks" do
+    test "bell callback fires on BEL character" do
+      test_pid = self()
+      {:ok, term} = Terminal.start_link(on_bell: fn -> send(test_pid, :bell_received) end)
+      Terminal.write(term, "\a")
+      assert_receive :bell_received, 100
+      GenServer.stop(term)
+    end
+
+    test "write_pty callback fires on DA query" do
+      test_pid = self()
+      {:ok, term} = Terminal.start_link(on_output: fn _data -> send(test_pid, :pty_write_received) end)
+      # Send a Device Attributes query (CSI c) — triggers a write-back response
+      Terminal.write(term, "\e[c")
+      assert_receive :pty_write_received, 100
+      GenServer.stop(term)
+    end
+  end
+
   describe "process lifecycle" do
     test "terminal is cleaned up when process stops" do
       {:ok, term} = Terminal.start_link()

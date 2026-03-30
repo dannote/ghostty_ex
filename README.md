@@ -100,9 +100,10 @@ See the [`examples/`](examples/) directory:
 
 ## Roadmap
 
-- [ ] Key encoding via `ghostty_key_encoder` NIF
-- [ ] Mouse encoding via `ghostty_mouse_encoder` NIF
-- [ ] Effect callbacks (PTY write-back, bell, title)
+- [x] Key encoding via `ghostty_key_encoder` NIF
+- [x] Mouse encoding via `ghostty_mouse_encoder` NIF
+- [x] Effect callbacks (PTY write-back, bell, title)
+- [x] Focus encoding
 - [ ] Render state API (cell-level iteration for LiveView)
 - [ ] PTY module (`forkpty` + non-blocking I/O)
 

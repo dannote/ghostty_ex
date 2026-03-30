@@ -103,4 +103,98 @@ defmodule Ghostty.KeyEvent do
             mods: [],
             utf8: nil,
             unshifted_codepoint: nil
+
+  # GhosttyKey enum values from key/event.h (0-indexed, sequential)
+  @key_map %{
+    backquote: 1,
+    backslash: 2,
+    bracket_left: 3,
+    bracket_right: 4,
+    comma: 5,
+    digit_0: 6,
+    digit_1: 7,
+    digit_2: 8,
+    digit_3: 9,
+    digit_4: 10,
+    digit_5: 11,
+    digit_6: 12,
+    digit_7: 13,
+    digit_8: 14,
+    digit_9: 15,
+    equal: 16,
+    a: 20,
+    b: 21,
+    c: 22,
+    d: 23,
+    e: 24,
+    f: 25,
+    g: 26,
+    h: 27,
+    i: 28,
+    j: 29,
+    k: 30,
+    l: 31,
+    m: 32,
+    n: 33,
+    o: 34,
+    p: 35,
+    q: 36,
+    r: 37,
+    s: 38,
+    t: 39,
+    u: 40,
+    v: 41,
+    w: 42,
+    x: 43,
+    y: 44,
+    z: 45,
+    minus: 46,
+    period: 47,
+    quote: 48,
+    semicolon: 49,
+    slash: 50,
+    backspace: 53,
+    enter: 58,
+    space: 63,
+    tab: 64,
+    delete: 68,
+    end: 69,
+    home: 71,
+    insert: 72,
+    page_down: 73,
+    page_up: 74,
+    arrow_down: 75,
+    arrow_left: 76,
+    arrow_right: 77,
+    arrow_up: 78,
+    escape: 120,
+    f1: 121,
+    f2: 122,
+    f3: 123,
+    f4: 124,
+    f5: 125,
+    f6: 126,
+    f7: 127,
+    f8: 128,
+    f9: 129,
+    f10: 130,
+    f11: 131,
+    f12: 132
+  }
+
+  @action_map %{release: 0, press: 1, repeat: 2}
+
+  @mod_bits %{shift: 1, ctrl: 2, alt: 4, super: 8}
+
+  @doc false
+  def action_to_int(action), do: Map.fetch!(@action_map, action)
+
+  @doc false
+  def key_to_int(key), do: Map.get(@key_map, key, 0)
+
+  @doc false
+  def mods_to_bitmask(mods) do
+    import Bitwise
+    Enum.reduce(mods, 0, fn mod, acc -> acc ||| Map.get(@mod_bits, mod, 0) end)
+  end
 end

@@ -27,6 +27,10 @@ defmodule Ghostty.Terminal.Nif do
       nif_reset: 1,
       nif_snapshot: 2,
       nif_scroll: 2,
-      nif_get_cursor: 1
+      nif_get_cursor: 1,
+      nif_set_effect_pid: 2,
+      nif_encode_key: 6,
+      nif_encode_mouse: 6,
+      nif_encode_focus: 1
     ]
 end
