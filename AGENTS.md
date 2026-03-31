@@ -28,9 +28,8 @@ Elixir → GenServer (`Terminal`) → Zig NIFs (`ghostty_nif.zig`) → libghostt
 - `lib/ghostty/terminal/cell.ex` — cell flag helpers
 - `lib/ghostty/key_event.ex` — keyboard input struct + key code mapping
 - `lib/ghostty/mouse_event.ex` — mouse input struct
-- `lib/ghostty/pty.ex` — subprocess I/O via Erlang ports
+- `lib/ghostty/port.ex` — subprocess I/O via Erlang ports
 - `lib/mix/tasks/ghostty.setup.ex` — builds libghostty-vt from source
-- `lib/mix/tasks/compile/ghostty_vt.ex` — copies priv/ into _build priv/
 
 ## Adding a NIF
 

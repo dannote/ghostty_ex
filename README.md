@@ -49,6 +49,27 @@ Ghostty.Terminal.write(:console, data)
 {:ok, html} = Ghostty.Terminal.snapshot(:console, :html)
 ```
 
+## Messages
+
+### Terminal effects
+
+Effect messages are sent to the process that called `start_link/1`:
+
+| Message | Trigger |
+|---|---|
+| `{:pty_write, binary}` | Query responses to write back to the PTY |
+| `:bell` | BEL character (`\a`) |
+| `:title_changed` | Title change via OSC 2 |
+
+### Subprocess output
+
+`Ghostty.Port` sends messages to the process that called `start_link/1`:
+
+| Message | Trigger |
+|---|---|
+| `{:data, binary}` | Subprocess stdout/stderr |
+| `{:exit, status}` | Subprocess exit |
+
 ## Resize with reflow
 
 ```elixir
@@ -85,13 +106,15 @@ for row <- rows do
 end
 ```
 
-## PTY
+## Subprocess
 
-Run a subprocess and pipe its output through the terminal:
+Run a command and pipe its output through the terminal.
+`Ghostty.Port` wraps an Erlang port — not a real PTY — so programs
+requiring a TTY won't work correctly.
 
 ```elixir
 {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-{:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
+{:ok, port} = Ghostty.Port.start_link(cmd: "/bin/ls", args: ["--color=always"])
 
 receive do
   {:data, data} -> Ghostty.Terminal.write(term, data)
@@ -127,7 +150,7 @@ git clone https://github.com/dannote/ghostty_ex
 cd ghostty_ex
 mix deps.get
 mix ghostty.setup            # clones Ghostty, builds libghostty-vt
-GHOSTTY_BUILD=1 mix test     # 35 tests
+GHOSTTY_BUILD=1 mix test     # 44 tests
 ```
 
 To use an existing Ghostty checkout:
@@ -135,6 +158,17 @@ To use an existing Ghostty checkout:
 ```bash
 GHOSTTY_SOURCE_DIR=~/code/ghostty mix ghostty.setup
 ```
+
+### Troubleshooting
+
+**Xcode 26.4 breaks Zig builds on macOS.** Downgrade to Xcode 26.3 CLT:
+
+```bash
+# Download from https://developer.apple.com/download/all/?q=Command+Line+Tools+for+Xcode+26.3
+sudo xcode-select --switch /Library/Developer/CommandLineTools
+```
+
+See [ziglang/zig#31658](https://codeberg.org/ziglang/zig/issues/31658) for details.
 
 ## License
 

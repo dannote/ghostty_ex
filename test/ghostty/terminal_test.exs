@@ -1,8 +1,7 @@
-defmodule GhosttyTest do
+defmodule Ghostty.TerminalTest do
   use ExUnit.Case, async: true
 
   alias Ghostty.Terminal
-  alias Ghostty.Terminal.Cell
 
   describe "start_link/1" do
     test "creates a terminal with default dimensions" do
@@ -21,6 +20,30 @@ defmodule GhosttyTest do
       {:ok, _} = Terminal.start_link(name: :test_terminal)
       assert is_pid(Process.whereis(:test_terminal))
       GenServer.stop(:test_terminal)
+    end
+
+    test "rejects zero cols" do
+      Process.flag(:trap_exit, true)
+      assert {:error, {:invalid_option, msg}} = Terminal.start_link(cols: 0)
+      assert msg =~ "cols"
+    end
+
+    test "rejects negative rows" do
+      Process.flag(:trap_exit, true)
+      assert {:error, {:invalid_option, msg}} = Terminal.start_link(rows: -1)
+      assert msg =~ "rows"
+    end
+
+    test "rejects non-integer cols" do
+      Process.flag(:trap_exit, true)
+      assert {:error, {:invalid_option, msg}} = Terminal.start_link(cols: "abc")
+      assert msg =~ "cols"
+    end
+
+    test "rejects negative max_scrollback" do
+      Process.flag(:trap_exit, true)
+      assert {:error, {:invalid_option, msg}} = Terminal.start_link(max_scrollback: -1)
+      assert msg =~ "max_scrollback"
     end
   end
 
@@ -143,152 +166,109 @@ defmodule GhosttyTest do
   describe "input_key/2" do
     test "encodes enter key" do
       {:ok, term} = Terminal.start_link()
-      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :enter})
-      assert {:ok, seq} = result
-      assert seq == "\r"
+      assert {:ok, "\r"} = Terminal.input_key(term, %Ghostty.KeyEvent{key: :enter})
       GenServer.stop(term)
     end
 
     test "encodes letter key with utf8" do
       {:ok, term} = Terminal.start_link()
-      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, utf8: "a", unshifted_codepoint: ?a})
-      assert {:ok, seq} = result
-      assert seq == "a"
+
+      assert {:ok, "a"} =
+               Terminal.input_key(term, %Ghostty.KeyEvent{
+                 key: :a,
+                 utf8: "a",
+                 unshifted_codepoint: ?a
+               })
+
       GenServer.stop(term)
     end
 
     test "encodes ctrl+c" do
       {:ok, term} = Terminal.start_link()
-      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :c, mods: [:ctrl], unshifted_codepoint: ?c})
-      assert {:ok, seq} = result
-      assert seq == <<3>>
+
+      assert {:ok, <<3>>} =
+               Terminal.input_key(term, %Ghostty.KeyEvent{
+                 key: :c,
+                 mods: [:ctrl],
+                 unshifted_codepoint: ?c
+               })
+
       GenServer.stop(term)
     end
 
     test "encodes arrow up" do
       {:ok, term} = Terminal.start_link()
-      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :arrow_up})
-      assert {:ok, seq} = result
-      assert seq == "\e[A"
+      assert {:ok, "\e[A"} = Terminal.input_key(term, %Ghostty.KeyEvent{key: :arrow_up})
       GenServer.stop(term)
     end
 
     test "encodes escape key" do
       {:ok, term} = Terminal.start_link()
-      result = Terminal.input_key(term, %Ghostty.KeyEvent{key: :escape})
-      assert {:ok, seq} = result
-      assert seq == "\e"
+      assert {:ok, "\e"} = Terminal.input_key(term, %Ghostty.KeyEvent{key: :escape})
       GenServer.stop(term)
+    end
+
+    test "exits on unknown key" do
+      Process.flag(:trap_exit, true)
+      {:ok, term} = Terminal.start_link()
+
+      catch_exit(Terminal.input_key(term, %Ghostty.KeyEvent{key: :nonexistent}))
+    end
+
+    test "exits on unknown action" do
+      Process.flag(:trap_exit, true)
+      {:ok, term} = Terminal.start_link()
+
+      catch_exit(Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, action: :bogus}))
     end
   end
 
   describe "input_mouse/2" do
     test "returns :none when mouse tracking disabled" do
       {:ok, term} = Terminal.start_link()
-      result = Terminal.input_mouse(term, %Ghostty.MouseEvent{action: :press, button: :left, x: 10.0, y: 5.0})
-      assert result == :none
+
+      assert :none =
+               Terminal.input_mouse(term, %Ghostty.MouseEvent{
+                 action: :press,
+                 button: :left,
+                 x: 10.0,
+                 y: 5.0
+               })
+
       GenServer.stop(term)
+    end
+
+    test "exits on unknown button" do
+      Process.flag(:trap_exit, true)
+      {:ok, term} = Terminal.start_link()
+
+      catch_exit(Terminal.input_mouse(term, %Ghostty.MouseEvent{button: :nonexistent}))
     end
   end
 
   describe "encode_focus/1" do
     test "encodes focus gained" do
-      assert {:ok, seq} = Terminal.encode_focus(true)
-      assert seq == "\e[I"
+      assert {:ok, "\e[I"} = Terminal.encode_focus(true)
     end
 
     test "encodes focus lost" do
-      assert {:ok, seq} = Terminal.encode_focus(false)
-      assert seq == "\e[O"
+      assert {:ok, "\e[O"} = Terminal.encode_focus(false)
     end
   end
 
   describe "effects" do
-    test "bell callback fires on BEL character" do
+    test "bell message on BEL character" do
       {:ok, term} = Terminal.start_link()
       Terminal.write(term, "\a")
       assert_receive :bell, 100
       GenServer.stop(term)
     end
 
-    test "write_pty callback fires on DA query" do
+    test "pty_write message on DA query" do
       {:ok, term} = Terminal.start_link()
-      # Send a Device Attributes query (CSI c) — triggers a write-back response
       Terminal.write(term, "\e[c")
       assert_receive {:pty_write, _data}, 100
       GenServer.stop(term)
-    end
-  end
-
-  describe "cells/1" do
-    test "returns grid structure" do
-      {:ok, term} = Terminal.start_link(cols: 10, rows: 3)
-      Terminal.write(term, "Hi")
-      cells = Terminal.cells(term)
-      assert is_list(cells)
-      assert length(cells) == 3
-      [first_row | _] = cells
-      assert length(first_row) == 10
-      GenServer.stop(term)
-    end
-
-    test "cell contains grapheme text" do
-      {:ok, term} = Terminal.start_link(cols: 10, rows: 3)
-      Terminal.write(term, "AB")
-      [[a, b | _] | _] = Terminal.cells(term)
-      assert Cell.grapheme(a) == "A"
-      assert Cell.grapheme(b) == "B"
-      GenServer.stop(term)
-    end
-
-    test "cell flags for bold text" do
-      {:ok, term} = Terminal.start_link(cols: 20, rows: 3)
-      Terminal.write(term, "\e[1mBold\e[0m")
-      [[cell | _] | _] = Terminal.cells(term)
-      assert Cell.bold?(cell)
-      refute Cell.italic?(cell)
-      GenServer.stop(term)
-    end
-
-    test "colored text has fg color" do
-      {:ok, term} = Terminal.start_link(cols: 20, rows: 3)
-      Terminal.write(term, "\e[38;2;255;0;128mX\e[0m")
-      [[cell | _] | _] = Terminal.cells(term)
-      assert Cell.fg(cell) == {255, 0, 128}
-      GenServer.stop(term)
-    end
-
-    test "blank cells have nil colors and empty grapheme" do
-      {:ok, term} = Terminal.start_link(cols: 10, rows: 3)
-      [[_ | rest] | _] = Terminal.cells(term)
-      blank = List.last(rest)
-      assert Cell.blank?(blank)
-      GenServer.stop(term)
-    end
-  end
-
-  describe "Ghostty.PTY" do
-    test "captures command output" do
-      {:ok, pty} =
-        Ghostty.PTY.start_link(
-          cmd: "/bin/echo",
-          args: ["hello_from_pty"]
-        )
-
-      assert_receive {:data, data}, 2_000
-      assert data =~ "hello_from_pty"
-      assert_receive {:exit, _status}, 2_000
-      refute Process.alive?(pty)
-    end
-
-    test "writes to subprocess stdin" do
-      {:ok, pty} =
-        Ghostty.PTY.start_link(cmd: "/bin/cat")
-
-      Ghostty.PTY.write(pty, "echo_this\n")
-      assert_receive {:data, data}, 2_000
-      assert data =~ "echo_this"
-      Ghostty.PTY.close(pty)
     end
   end
 

@@ -42,7 +42,8 @@ defmodule Ghostty.Terminal do
 
   @type format :: :plain | :html | :vt
 
-  @type cell :: {binary(), {byte(), byte(), byte()} | nil, {byte(), byte(), byte()} | nil, non_neg_integer()}
+  @type cell ::
+          {binary(), {byte(), byte(), byte()} | nil, {byte(), byte(), byte()} | nil, non_neg_integer()}
 
   @type option ::
           {:cols, pos_integer()}
@@ -54,6 +55,9 @@ defmodule Ghostty.Terminal do
 
   @doc """
   Starts a terminal process linked to the caller.
+
+  Effect messages (`:bell`, `:title_changed`, `{:pty_write, data}`)
+  are sent to the calling process.
 
   ## Options
 
@@ -76,7 +80,9 @@ defmodule Ghostty.Terminal do
 
     %{
       id: id,
-      start: {__MODULE__, :start_link, [opts]}
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :permanent,
+      shutdown: 5_000
     }
   end
 
@@ -170,6 +176,8 @@ defmodule Ghostty.Terminal do
   Returns `{:ok, sequence}` with the bytes to send to the PTY,
   or `:none` if the key event produces no output.
 
+  Raises `ArgumentError` for invalid key names or actions.
+
   ## Examples
 
       Ghostty.Terminal.input_key(term, %Ghostty.KeyEvent{key: :enter})
@@ -189,6 +197,8 @@ defmodule Ghostty.Terminal do
 
   Returns `{:ok, sequence}` or `:none` if mouse tracking is not
   enabled by the running program.
+
+  Raises `ArgumentError` for invalid button names or actions.
   """
   @spec input_mouse(GenServer.server(), Ghostty.MouseEvent.t()) :: {:ok, binary()} | :none
   def input_mouse(terminal, %Ghostty.MouseEvent{} = event) do
@@ -243,10 +253,34 @@ defmodule Ghostty.Terminal do
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
     max_scrollback = Keyword.get(opts, :max_scrollback, 10_000)
+
+    validate_pos_integer!(:cols, cols)
+    validate_pos_integer!(:rows, rows)
+    validate_non_neg_integer!(:max_scrollback, max_scrollback)
+
     ref = Nif.nif_new(cols, rows, max_scrollback)
     Nif.nif_set_effect_pid(ref, Keyword.fetch!(opts, :owner))
 
     {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows}}
+  rescue
+    e in ErlangError ->
+      {:stop, {:nif_not_loaded, Exception.message(e)}}
+
+    e in ArgumentError ->
+      {:stop, {:invalid_option, Exception.message(e)}}
+  end
+
+  defp validate_pos_integer!(_name, value) when is_integer(value) and value > 0, do: :ok
+
+  defp validate_pos_integer!(name, value) do
+    raise ArgumentError, "expected #{name} to be a positive integer, got: #{inspect(value)}"
+  end
+
+  defp validate_non_neg_integer!(_name, value) when is_integer(value) and value >= 0, do: :ok
+
+  defp validate_non_neg_integer!(name, value) do
+    raise ArgumentError,
+          "expected #{name} to be a non-negative integer, got: #{inspect(value)}"
   end
 
   @impl true

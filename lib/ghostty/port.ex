@@ -1,23 +1,23 @@
-defmodule Ghostty.PTY do
+defmodule Ghostty.Port do
   @moduledoc """
   Manages a subprocess with piped stdio.
 
-  Wraps an Erlang port for basic subprocess I/O. Output is sent as
-  `{:data, binary}` messages to the calling process. Exit is reported
-  as `{:exit, status}`.
+  Wraps an Erlang port for subprocess I/O. This provides stdin/stdout
+  piping but not a true pseudo-terminal — programs that require a TTY
+  (like `vim` or `top`) won't work correctly.
 
-  This provides stdin/stdout piping but not a true pseudo-terminal —
-  programs that require a TTY (like `vim` or `top`) won't work correctly.
+  Output is sent as `{:data, binary}` messages to the calling process.
+  Exit is reported as `{:exit, status}`.
 
   ## Examples
 
-      {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/echo", args: ["hello"])
-      assert_receive {:data, "hello\\n"}
+      {:ok, port} = Ghostty.Port.start_link(cmd: "/bin/echo", args: ["hello"])
+      receive do: ({:data, data} -> IO.write(data))
 
   ## With a terminal
 
       {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-      {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
+      {:ok, port} = Ghostty.Port.start_link(cmd: "/bin/ls", args: ["--color=always"])
 
       receive do
         {:data, data} -> Ghostty.Terminal.write(term, data)
@@ -36,7 +36,7 @@ defmodule Ghostty.PTY do
   defstruct [:port, :owner]
 
   @doc """
-  Starts a PTY process linked to the caller.
+  Starts a subprocess linked to the caller.
 
   Output and exit messages are sent to the calling process.
 
@@ -55,16 +55,28 @@ defmodule Ghostty.PTY do
     GenServer.start_link(__MODULE__, init_opts, server_opts)
   end
 
+  @doc "Returns a child spec for use in supervision trees."
+  def child_spec(opts) do
+    id = Keyword.get(opts, :id, Keyword.get(opts, :name, __MODULE__))
+
+    %{
+      id: id,
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :temporary,
+      shutdown: 5_000
+    }
+  end
+
   @doc "Writes data to the subprocess stdin."
   @spec write(GenServer.server(), iodata()) :: :ok
-  def write(pty, data) do
-    GenServer.call(pty, {:write, IO.iodata_to_binary(data)})
+  def write(port, data) do
+    GenServer.call(port, {:write, IO.iodata_to_binary(data)})
   end
 
   @doc "Closes the subprocess."
   @spec close(GenServer.server()) :: :ok
-  def close(pty) do
-    GenServer.stop(pty)
+  def close(port) do
+    GenServer.stop(port)
   end
 
   @impl true
@@ -77,7 +89,7 @@ defmodule Ghostty.PTY do
     env_charlist = Enum.map(env, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
 
     port =
-      Port.open({:spawn_executable, cmd}, [
+      Elixir.Port.open({:spawn_executable, cmd}, [
         :binary,
         :exit_status,
         :use_stdio,
@@ -90,8 +102,13 @@ defmodule Ghostty.PTY do
   end
 
   @impl true
+  def terminate(_reason, state) do
+    if state.port && Elixir.Port.info(state.port), do: Elixir.Port.close(state.port)
+  end
+
+  @impl true
   def handle_call({:write, data}, _from, state) do
-    Port.command(state.port, data)
+    Elixir.Port.command(state.port, data)
     {:reply, :ok, state}
   end
 

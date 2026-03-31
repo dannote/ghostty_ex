@@ -69,9 +69,12 @@ defmodule Ghostty.MixProject do
       files: ~w[
         lib/ghostty/terminal/nif.ex
         lib/ghostty/terminal/ghostty_nif.zig
+        lib/ghostty/terminal/cell.ex
         lib/ghostty/terminal.ex
         lib/ghostty/key_event.ex
         lib/ghostty/mouse_event.ex
+        lib/ghostty/port.ex
+        lib/ghostty/mods.ex
         lib/ghostty.ex
         lib/mix
         examples
@@ -87,8 +90,8 @@ defmodule Ghostty.MixProject do
       extras: ["README.md", "CHANGELOG.md"],
       source_ref: "v#{@version}",
       groups_for_modules: [
-        Core: [Ghostty, Ghostty.Terminal],
-        Events: [Ghostty.KeyEvent, Ghostty.MouseEvent],
+        Core: [Ghostty, Ghostty.Terminal, Ghostty.Port],
+        "Cell & Events": [Ghostty.Terminal.Cell, Ghostty.KeyEvent, Ghostty.MouseEvent],
         Internal: [Ghostty.Terminal.Nif]
       ]
     ]

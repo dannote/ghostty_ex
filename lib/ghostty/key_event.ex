@@ -184,17 +184,18 @@ defmodule Ghostty.KeyEvent do
 
   @action_map %{release: 0, press: 1, repeat: 2}
 
-  @mod_bits %{shift: 1, ctrl: 2, alt: 4, super: 8}
-
   @doc false
-  def action_to_int(action), do: Map.fetch!(@action_map, action)
-
-  @doc false
-  def key_to_int(key), do: Map.get(@key_map, key, 0)
-
-  @doc false
-  def mods_to_bitmask(mods) do
-    import Bitwise
-    Enum.reduce(mods, 0, fn mod, acc -> acc ||| Map.get(@mod_bits, mod, 0) end)
+  def action_to_int(action) do
+    Map.get(@action_map, action) ||
+      raise ArgumentError, "unknown key action: #{inspect(action)}"
   end
+
+  @doc false
+  def key_to_int(key) do
+    Map.get(@key_map, key) ||
+      raise ArgumentError, "unknown key: #{inspect(key)}"
+  end
+
+  @doc false
+  defdelegate mods_to_bitmask(mods), to: Ghostty.Mods
 end
