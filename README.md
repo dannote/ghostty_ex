@@ -6,25 +6,6 @@ Wraps [libghostty-vt](https://ghostty.org) — the virtual terminal extracted fr
 [Ghostty](https://github.com/ghostty-org/ghostty). SIMD-optimized VT parsing,
 full Unicode, 24-bit color, scrollback with text reflow. Terminals are GenServers.
 
-## Prerequisites
-
-Precompiled NIF binaries are downloaded automatically for supported platforms
-(x86_64 Linux, aarch64 Linux, aarch64 macOS).
-
-To build from source instead, you need [Zig 0.15+](https://ziglang.org):
-
-```bash
-mix ghostty.setup              # clones Ghostty, builds libghostty-vt
-GHOSTTY_BUILD=1 mix compile    # builds the NIF from source
-mix test
-```
-
-Or point at an existing Ghostty checkout:
-
-```bash
-GHOSTTY_SOURCE_DIR=~/code/ghostty mix ghostty.setup
-```
-
 ## Installation
 
 ```elixir
@@ -32,6 +13,9 @@ def deps do
   [{:ghostty, "~> 0.1"}]
 end
 ```
+
+Precompiled NIF binaries are downloaded automatically for x86_64 Linux,
+aarch64 Linux, and aarch64 macOS.
 
 ## Usage
 
@@ -82,25 +66,10 @@ Ghostty.Terminal.write(term, ansi_output)
 {:ok, plain} = Ghostty.Terminal.snapshot(term)
 ```
 
-## Examples
-
-See the [`examples/`](examples/) directory:
-
-| Example | What it does |
-|---|---|
-| [`hello.exs`](examples/hello.exs) | Write with colors, read back plain + HTML |
-| [`ansi_stripper.exs`](examples/ansi_stripper.exs) | Pipe stdin, strip ANSI codes |
-| [`html_recorder.exs`](examples/html_recorder.exs) | Capture command output as styled HTML |
-| [`progress_bar.exs`](examples/progress_bar.exs) | `\r` overwrites → final screen state only |
-| [`reflow.exs`](examples/reflow.exs) | Text reflow on resize |
-| [`supervised.exs`](examples/supervised.exs) | Named terminals in a supervision tree |
-| [`diff.exs`](examples/diff.exs) | Terminal-aware Myers diff |
-| [`expect.exs`](examples/expect.exs) | Expect-like automation with pattern matching |
-| [`pool.exs`](examples/pool.exs) | Reusable terminal pool for concurrent processing |
-
 ## Render state
 
-Read the screen as a grid of cells for building custom renderers (LiveView, Scenic, etc.):
+Read the screen as a grid of cells for building custom renderers
+(LiveView, Scenic, etc.):
 
 ```elixir
 rows = Ghostty.Terminal.cells(term)
@@ -131,6 +100,40 @@ after
 end
 
 {:ok, html} = Ghostty.Terminal.snapshot(term, :html)
+```
+
+## Examples
+
+See the [`examples/`](examples/) directory:
+
+| Example | What it does |
+|---|---|
+| [`hello.exs`](examples/hello.exs) | Write with colors, read back plain + HTML |
+| [`ansi_stripper.exs`](examples/ansi_stripper.exs) | Pipe stdin, strip ANSI codes |
+| [`html_recorder.exs`](examples/html_recorder.exs) | Capture command output as styled HTML |
+| [`progress_bar.exs`](examples/progress_bar.exs) | `\r` overwrites → final screen state only |
+| [`reflow.exs`](examples/reflow.exs) | Text reflow on resize |
+| [`supervised.exs`](examples/supervised.exs) | Named terminals in a supervision tree |
+| [`diff.exs`](examples/diff.exs) | Terminal-aware Myers diff |
+| [`expect.exs`](examples/expect.exs) | Expect-like automation with pattern matching |
+| [`pool.exs`](examples/pool.exs) | Reusable terminal pool for concurrent processing |
+
+## Development
+
+[Zig 0.15+](https://ziglang.org) required to build from source.
+
+```bash
+git clone https://github.com/dannote/ghostty_ex
+cd ghostty_ex
+mix deps.get
+mix ghostty.setup            # clones Ghostty, builds libghostty-vt
+GHOSTTY_BUILD=1 mix test     # 35 tests
+```
+
+To use an existing Ghostty checkout:
+
+```bash
+GHOSTTY_SOURCE_DIR=~/code/ghostty mix ghostty.setup
 ```
 
 ## License
