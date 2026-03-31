@@ -45,17 +45,19 @@ jobs:
           cp /tmp/ghostty-src/zig-out/lib/libghostty-vt.* priv/lib/ 2>/dev/null || true
           cp -R /tmp/ghostty-src/zig-out/include/ghostty priv/include/
 
+          # On macOS, give the dylib a relative install name before the NIF is linked.
+          if [ "$(uname)" = "Darwin" ]; then
+            for f in priv/lib/libghostty-vt*.dylib; do
+              [ -f "$f" ] && install_name_tool -id @loader_path/libghostty-vt.dylib "$f"
+            done
+          fi
+
           # Install to _build priv/ (where Zigler looks)
           for env in dev test; do
             dest=_build/$env/lib/ghostty/priv
             mkdir -p $dest/lib $dest/include
             cp -R priv/lib/* $dest/lib/
             cp -R priv/include/* $dest/include/
-
-            # Fix macOS dylib install_name
-            for f in $dest/lib/libghostty-vt*.dylib; do
-              [ -f "$f" ] && install_name_tool -id "$(cd $dest/lib && pwd)/libghostty-vt.dylib" "$f" 2>/dev/null || true
-            done
           done
 
           ls -la priv/lib/
@@ -87,15 +89,6 @@ jobs:
           fi
 
           echo "Found NIF: ${LIB_FILE}"
-
-          # On macOS, patch the dependency to resolve next to the NIF itself
-          if [ "$(uname)" = "Darwin" ]; then
-            cp "$LIB_FILE" "${LIB_FILE}.patched"
-            install_name_tool \
-              -change @rpath/libghostty-vt.dylib @loader_path/libghostty-vt.dylib \
-              "${LIB_FILE}.patched"
-            mv "${LIB_FILE}.patched" "$LIB_FILE"
-          fi
 
           # Bundle libghostty-vt alongside the NIF
           FILES="$(basename "$LIB_FILE")"
