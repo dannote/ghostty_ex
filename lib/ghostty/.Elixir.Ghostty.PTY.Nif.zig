@@ -69,7 +69,7 @@ fn reader_loop(master_fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool
             if (n == 0 or (n < 0 and get_errno() == c.EIO)) {
                 if (!closed.load(.acquire)) {
                     const env = beam.alloc_env();
-                    beam.send(owner, .{ .exit, @as(i32, 0) }, .{ .env = env }) catch {};
+                    beam.send(owner, .{ .exit, @as(i32, 0) }, .{ .env = env }) catch {}; // process may have died
                     beam.free_env(env);
                 }
                 return;
@@ -79,7 +79,7 @@ fn reader_loop(master_fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool
 
         const slice = buf[0..@intCast(n)];
         const env = beam.alloc_env();
-        beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
+        beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {}; // process may have died
         beam.free_env(env);
     }
 }
@@ -94,6 +94,7 @@ pub fn nif_pty_open(cmd: []const u8, _args_unused: beam.term, cols: u16, rows: u
         .ws_ypixel = 0,
     };
 
+    // SAFETY: initialized by forkpty below
     var master_fd: c_int = undefined;
     const pid = c.forkpty(&master_fd, null, null, &ws);
     if (pid < 0) return error.forkpty_failed;

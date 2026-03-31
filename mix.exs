@@ -37,7 +37,8 @@ defmodule Ghostty.MixProject do
       lint: [
         "format --check-formatted",
         "credo --strict",
-        "ex_dna"
+        "ex_dna",
+        "cmd zlint lib/ghostty/terminal/ghostty_nif.zig lib/ghostty/pty_nif.zig"
       ],
       ci: [
         "compile --warnings-as-errors",
