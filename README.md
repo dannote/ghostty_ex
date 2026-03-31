@@ -63,7 +63,7 @@ Effect messages are sent to the process that called `start_link/1`:
 
 ### Subprocess output
 
-`Ghostty.Port` sends messages to the process that called `start_link/1`:
+`Ghostty.PTY` sends messages to the process that called `start_link/1`:
 
 | Message | Trigger |
 |---|---|
@@ -109,12 +109,12 @@ end
 ## Subprocess
 
 Run a command and pipe its output through the terminal.
-`Ghostty.Port` wraps an Erlang port — not a real PTY — so programs
+`Ghostty.PTY` wraps an Erlang port — not a real PTY — so programs
 requiring a TTY won't work correctly.
 
 ```elixir
 {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-{:ok, port} = Ghostty.Port.start_link(cmd: "/bin/ls", args: ["--color=always"])
+{:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
 
 receive do
   {:data, data} -> Ghostty.Terminal.write(term, data)

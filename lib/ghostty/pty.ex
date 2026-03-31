@@ -1,4 +1,4 @@
-defmodule Ghostty.Port do
+defmodule Ghostty.PTY do
   @moduledoc """
   Manages a subprocess with piped stdio.
 
@@ -11,13 +11,13 @@ defmodule Ghostty.Port do
 
   ## Examples
 
-      {:ok, port} = Ghostty.Port.start_link(cmd: "/bin/echo", args: ["hello"])
+      {:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/echo", args: ["hello"])
       receive do: ({:data, data} -> IO.write(data))
 
   ## With a terminal
 
       {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-      {:ok, port} = Ghostty.Port.start_link(cmd: "/bin/ls", args: ["--color=always"])
+      {:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
 
       receive do
         {:data, data} -> Ghostty.Terminal.write(term, data)

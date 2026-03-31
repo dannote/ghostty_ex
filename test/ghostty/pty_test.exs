@@ -1,10 +1,10 @@
-defmodule Ghostty.PortTest do
+defmodule Ghostty.PTYTest do
   use ExUnit.Case, async: true
 
   describe "start_link/1" do
     test "captures command output" do
       {:ok, port} =
-        Ghostty.Port.start_link(
+        Ghostty.PTY.start_link(
           cmd: "/bin/echo",
           args: ["hello_from_port"]
         )
@@ -18,12 +18,12 @@ defmodule Ghostty.PortTest do
     end
 
     test "writes to subprocess stdin" do
-      {:ok, port} = Ghostty.Port.start_link(cmd: "/bin/cat")
+      {:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/cat")
 
-      Ghostty.Port.write(port, "echo_this\n")
+      Ghostty.PTY.write(port, "echo_this\n")
       assert_receive {:data, data}, 2_000
       assert data =~ "echo_this"
-      Ghostty.Port.close(port)
+      Ghostty.PTY.close(port)
     end
   end
 end
