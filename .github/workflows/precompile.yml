@@ -138,10 +138,7 @@ jobs:
           # Clear stale checksums so the download task can regenerate them
           echo '[]' > checksum-Ghostty.Terminal.Nif.exs
 
-          mix zigler_precompiled.download \
-            --module Ghostty.Terminal.Nif \
-            --base-url "https://github.com/dannote/ghostty_ex/releases/download/${GITHUB_REF#refs/tags/}" \
-            --version "${GITHUB_REF#refs/tags/v}"
+          mix zigler_precompiled.download Ghostty.Terminal.Nif --all --ignore-unavailable
 
       - name: Commit checksum file
         run: |
