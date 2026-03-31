@@ -110,6 +110,18 @@ defmodule Ghostty.TerminalTest do
       GenServer.stop(term)
     end
 
+    test "rejects invalid dimensions" do
+      {:ok, term} = Terminal.start_link()
+
+      assert_raise ArgumentError, fn -> Terminal.resize(term, 0, 24) end
+      assert_raise ArgumentError, fn -> Terminal.resize(term, 80, -1) end
+
+      Terminal.write(term, "still alive\r\n")
+      {:ok, text} = Terminal.snapshot(term)
+      assert text =~ "still alive"
+      GenServer.stop(term)
+    end
+
     test "handles text reflow on resize" do
       {:ok, term} = Terminal.start_link(cols: 10, rows: 5)
       Terminal.write(term, "ABCDEFGHIJ")
@@ -208,18 +220,26 @@ defmodule Ghostty.TerminalTest do
       GenServer.stop(term)
     end
 
-    test "exits on unknown key" do
-      Process.flag(:trap_exit, true)
+    test "raises on unknown key without crashing the server" do
       {:ok, term} = Terminal.start_link()
 
-      catch_exit(Terminal.input_key(term, %Ghostty.KeyEvent{key: :nonexistent}))
+      assert_raise ArgumentError, fn ->
+        Terminal.input_key(term, %Ghostty.KeyEvent{key: :nonexistent})
+      end
+
+      assert {:ok, _} = Terminal.snapshot(term)
+      GenServer.stop(term)
     end
 
-    test "exits on unknown action" do
-      Process.flag(:trap_exit, true)
+    test "raises on unknown action without crashing the server" do
       {:ok, term} = Terminal.start_link()
 
-      catch_exit(Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, action: :bogus}))
+      assert_raise ArgumentError, fn ->
+        Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, action: :bogus})
+      end
+
+      assert {:ok, _} = Terminal.snapshot(term)
+      GenServer.stop(term)
     end
   end
 
@@ -238,11 +258,15 @@ defmodule Ghostty.TerminalTest do
       GenServer.stop(term)
     end
 
-    test "exits on unknown button" do
-      Process.flag(:trap_exit, true)
+    test "raises on unknown button without crashing the server" do
       {:ok, term} = Terminal.start_link()
 
-      catch_exit(Terminal.input_mouse(term, %Ghostty.MouseEvent{button: :nonexistent}))
+      assert_raise ArgumentError, fn ->
+        Terminal.input_mouse(term, %Ghostty.MouseEvent{button: :nonexistent})
+      end
+
+      assert {:ok, _} = Terminal.snapshot(term)
+      GenServer.stop(term)
     end
   end
 

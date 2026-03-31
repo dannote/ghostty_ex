@@ -31,12 +31,14 @@ jobs:
           elixir-version: '1.18'
 
       - name: Build NIF
+        env:
+          GHOSTTY_BUILD: "1"
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
           mix ghostty.setup
-          GHOSTTY_BUILD=1 mix compile
+          mix compile --force
 
       - name: Package artifact
         run: |

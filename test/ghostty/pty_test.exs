@@ -25,7 +25,7 @@ defmodule Ghostty.PTYTest do
     end
 
     test "child sees a real TTY" do
-      {:ok, pty} =
+      {:ok, _pty} =
         Ghostty.PTY.start_link(
           cmd: "/bin/sh",
           args: ["-c", "test -t 0 && echo tty || echo not_tty"]

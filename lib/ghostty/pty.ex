@@ -78,7 +78,8 @@ defmodule Ghostty.PTY do
 
   @doc "Resizes the PTY. Sends SIGWINCH to the child."
   @spec resize(GenServer.server(), pos_integer(), pos_integer()) :: :ok
-  def resize(pty, cols, rows) do
+  def resize(pty, cols, rows)
+      when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 do
     GenServer.call(pty, {:resize, cols, rows})
   end
 
@@ -96,6 +97,9 @@ defmodule Ghostty.PTY do
     rows = Keyword.get(opts, :rows, 24)
     owner = Keyword.fetch!(opts, :owner)
 
+    # Command is passed through `sh -c` because the NIF uses execvp with
+    # a single string. This handles PATH resolution and allows shell
+    # features like pipes and redirects.
     shell_cmd =
       if args == [] do
         cmd
@@ -106,7 +110,8 @@ defmodule Ghostty.PTY do
     ref = Nif.nif_pty_open(shell_cmd, 0, cols, rows, owner)
     {:ok, %__MODULE__{ref: ref, owner: owner}}
   rescue
-    e -> {:stop, {:pty_open_failed, Exception.message(e)}}
+    e in [ErlangError, ArgumentError] ->
+      {:stop, {:pty_open_failed, Exception.message(e)}}
   end
 
   @impl true

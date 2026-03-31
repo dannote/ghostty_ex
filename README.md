@@ -106,23 +106,25 @@ for row <- rows do
 end
 ```
 
-## Subprocess
+## PTY
 
-Run a command and pipe its output through the terminal.
-`Ghostty.PTY` wraps an Erlang port — not a real PTY — so programs
-requiring a TTY won't work correctly.
+Run interactive programs in a real pseudo-terminal:
 
 ```elixir
 {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-{:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
+{:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
 
+# PTY output arrives as messages
 receive do
   {:data, data} -> Ghostty.Terminal.write(term, data)
-after
-  1_000 -> :timeout
 end
 
-{:ok, html} = Ghostty.Terminal.snapshot(term, :html)
+# Send keyboard input
+Ghostty.PTY.write(pty, "ls --color\n")
+
+# Resize the PTY (reflows in the terminal too)
+Ghostty.PTY.resize(pty, 120, 40)
+Ghostty.Terminal.resize(term, 120, 40)
 ```
 
 ## Examples

@@ -114,6 +114,8 @@ defmodule Ghostty.Terminal do
   """
   @spec resize(GenServer.server(), pos_integer(), pos_integer()) :: :ok
   def resize(terminal, cols, rows) do
+    validate_pos_integer!(:cols, cols)
+    validate_pos_integer!(:rows, rows)
     GenServer.call(terminal, {:resize, cols, rows})
   end
 
@@ -189,6 +191,9 @@ defmodule Ghostty.Terminal do
   """
   @spec input_key(GenServer.server(), Ghostty.KeyEvent.t()) :: {:ok, binary()} | :none
   def input_key(terminal, %Ghostty.KeyEvent{} = event) do
+    Ghostty.KeyEvent.action_to_int(event.action)
+    Ghostty.KeyEvent.key_to_int(event.key)
+    Ghostty.Mods.to_bitmask(event.mods)
     GenServer.call(terminal, {:input_key, event})
   end
 
@@ -202,6 +207,9 @@ defmodule Ghostty.Terminal do
   """
   @spec input_mouse(GenServer.server(), Ghostty.MouseEvent.t()) :: {:ok, binary()} | :none
   def input_mouse(terminal, %Ghostty.MouseEvent{} = event) do
+    Ghostty.MouseEvent.action_to_int(event.action)
+    Ghostty.MouseEvent.button_to_int(event.button)
+    Ghostty.Mods.to_bitmask(event.mods)
     GenServer.call(terminal, {:input_mouse, event})
   end
 
