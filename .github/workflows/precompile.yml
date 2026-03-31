@@ -53,10 +53,9 @@ jobs:
             cp -R priv/include/* $dest/include/
 
             # Fix macOS dylib install_name
-            if [ -f "$dest/lib/libghostty-vt.dylib" ]; then
-              real=$(readlink -f $dest/lib/libghostty-vt.dylib 2>/dev/null || realpath $dest/lib/libghostty-vt.dylib)
-              install_name_tool -id "$(cd $dest/lib && pwd)/libghostty-vt.dylib" "$real" 2>/dev/null || true
-            fi
+            for f in $dest/lib/libghostty-vt*.dylib; do
+              [ -f "$f" ] && install_name_tool -id "$(cd $dest/lib && pwd)/libghostty-vt.dylib" "$f" 2>/dev/null || true
+            done
           done
 
           ls -la priv/lib/

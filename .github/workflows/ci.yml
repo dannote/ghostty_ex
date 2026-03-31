@@ -43,10 +43,9 @@ jobs:
             mkdir -p $dest/lib $dest/include
             cp -R priv/lib/* $dest/lib/
             cp -R priv/include/* $dest/include/
-            if [ -f "$dest/lib/libghostty-vt.dylib" ]; then
-              real=$(readlink -f $dest/lib/libghostty-vt.dylib 2>/dev/null || realpath $dest/lib/libghostty-vt.dylib)
-              install_name_tool -id "$(cd $dest/lib && pwd)/libghostty-vt.dylib" "$real" 2>/dev/null || true
-            fi
+            for f in $dest/lib/libghostty-vt*.dylib; do
+              [ -f "$f" ] && install_name_tool -id "$(cd $dest/lib && pwd)/libghostty-vt.dylib" "$f" 2>/dev/null || true
+            done
           done
 
       - run: mix deps.get
