@@ -54,6 +54,7 @@ defmodule Ghostty.MixProject do
     [
       {:zigler_precompiled, "~> 0.1.2"},
       {:zigler, "~> 0.15.2", runtime: false, optional: true},
+      {:phoenix_live_view, "~> 1.0", optional: true},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -74,9 +75,13 @@ defmodule Ghostty.MixProject do
         lib/ghostty/key_event.ex
         lib/ghostty/mouse_event.ex
         lib/ghostty/pty.ex
+        lib/ghostty/pty_nif.ex
+        lib/ghostty/pty_nif.zig
+        lib/ghostty/live_terminal.ex
         lib/ghostty/mods.ex
         lib/ghostty.ex
         lib/mix
+        priv/static/ghostty.js
         examples
         mix.exs README.md LICENSE CHANGELOG.md .formatter.exs
         checksum-Ghostty.Terminal.Nif.exs
@@ -92,7 +97,8 @@ defmodule Ghostty.MixProject do
       groups_for_modules: [
         Core: [Ghostty, Ghostty.Terminal, Ghostty.PTY],
         "Cell & Events": [Ghostty.Terminal.Cell, Ghostty.KeyEvent, Ghostty.MouseEvent],
-        Internal: [Ghostty.Terminal.Nif]
+        LiveView: [Ghostty.LiveTerminal],
+        Internal: [Ghostty.Terminal.Nif, Ghostty.PTY.Nif]
       ]
     ]
   end

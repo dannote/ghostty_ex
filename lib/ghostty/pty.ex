@@ -1,42 +1,44 @@
 defmodule Ghostty.PTY do
   @moduledoc """
-  Manages a subprocess with piped stdio.
+  Pseudo-terminal for running interactive programs.
 
-  Wraps an Erlang port for subprocess I/O. This provides stdin/stdout
-  piping but not a true pseudo-terminal — programs that require a TTY
-  (like `vim` or `top`) won't work correctly.
+  Uses `forkpty()` to create a real PTY — programs like `vim`, `top`,
+  and `htop` work correctly. The child process gets a proper TTY with
+  the requested dimensions.
 
   Output is sent as `{:data, binary}` messages to the calling process.
   Exit is reported as `{:exit, status}`.
 
   ## Examples
 
-      {:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/echo", args: ["hello"])
+      {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash")
+      Ghostty.PTY.write(pty, "echo hello\\n")
       receive do: ({:data, data} -> IO.write(data))
 
   ## With a terminal
 
       {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-      {:ok, port} = Ghostty.PTY.start_link(cmd: "/bin/ls", args: ["--color=always"])
+      {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
 
-      receive do
-        {:data, data} -> Ghostty.Terminal.write(term, data)
-      end
+      # In a loop: forward PTY output to terminal, encode key events back to PTY
 
   """
 
   use GenServer
 
+  alias Ghostty.PTY.Nif
+
   @type option ::
           {:cmd, Path.t()}
           | {:args, [String.t()]}
-          | {:env, [{String.t(), String.t()}]}
+          | {:cols, pos_integer()}
+          | {:rows, pos_integer()}
           | {:name, GenServer.name()}
 
-  defstruct [:port, :owner]
+  defstruct [:ref, :owner]
 
   @doc """
-  Starts a subprocess linked to the caller.
+  Starts a PTY process linked to the caller.
 
   Output and exit messages are sent to the calling process.
 
@@ -44,7 +46,8 @@ defmodule Ghostty.PTY do
 
     * `:cmd` — command to run (default: `$SHELL` or `/bin/sh`)
     * `:args` — argument list (default: `[]`)
-    * `:env` — environment as `[{"KEY", "VALUE"}]` (default: `[{"TERM", "xterm-256color"}]`)
+    * `:cols` — terminal width in columns (default: `80`)
+    * `:rows` — terminal height in rows (default: `24`)
     * `:name` — GenServer name registration
 
   """
@@ -67,59 +70,66 @@ defmodule Ghostty.PTY do
     }
   end
 
-  @doc "Writes data to the subprocess stdin."
+  @doc "Writes data to the PTY (child's stdin)."
   @spec write(GenServer.server(), iodata()) :: :ok
-  def write(port, data) do
-    GenServer.call(port, {:write, IO.iodata_to_binary(data)})
+  def write(pty, data) do
+    GenServer.call(pty, {:write, IO.iodata_to_binary(data)})
   end
 
-  @doc "Closes the subprocess."
+  @doc "Resizes the PTY. Sends SIGWINCH to the child."
+  @spec resize(GenServer.server(), pos_integer(), pos_integer()) :: :ok
+  def resize(pty, cols, rows) do
+    GenServer.call(pty, {:resize, cols, rows})
+  end
+
+  @doc "Closes the PTY and terminates the child process."
   @spec close(GenServer.server()) :: :ok
-  def close(port) do
-    GenServer.stop(port)
+  def close(pty) do
+    GenServer.stop(pty)
   end
 
   @impl true
   def init(opts) do
     cmd = Keyword.get(opts, :cmd, System.get_env("SHELL") || "/bin/sh")
     args = Keyword.get(opts, :args, [])
-    env = Keyword.get(opts, :env, [{"TERM", "xterm-256color"}])
+    cols = Keyword.get(opts, :cols, 80)
+    rows = Keyword.get(opts, :rows, 24)
     owner = Keyword.fetch!(opts, :owner)
 
-    env_charlist = Enum.map(env, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
+    shell_cmd =
+      if args == [] do
+        cmd
+      else
+        [cmd | args] |> Enum.map_join(" ", &shell_escape/1)
+      end
 
-    port =
-      Elixir.Port.open({:spawn_executable, cmd}, [
-        :binary,
-        :exit_status,
-        :use_stdio,
-        :stderr_to_stdout,
-        {:args, args},
-        {:env, env_charlist}
-      ])
-
-    {:ok, %__MODULE__{port: port, owner: owner}}
+    ref = Nif.nif_pty_open(shell_cmd, 0, cols, rows, owner)
+    {:ok, %__MODULE__{ref: ref, owner: owner}}
+  rescue
+    e -> {:stop, {:pty_open_failed, Exception.message(e)}}
   end
 
   @impl true
   def terminate(_reason, state) do
-    if state.port && Elixir.Port.info(state.port), do: Elixir.Port.close(state.port)
+    if state.ref, do: Nif.nif_pty_close(state.ref)
   end
 
   @impl true
   def handle_call({:write, data}, _from, state) do
-    Elixir.Port.command(state.port, data)
+    Nif.nif_pty_write(state.ref, data)
     {:reply, :ok, state}
   end
 
-  @impl true
-  def handle_info({port, {:data, data}}, %{port: port} = state) do
-    send(state.owner, {:data, data})
-    {:noreply, state}
+  def handle_call({:resize, cols, rows}, _from, state) do
+    Nif.nif_pty_resize(state.ref, cols, rows)
+    {:reply, :ok, state}
   end
 
-  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    send(state.owner, {:exit, status})
-    {:stop, :normal, state}
+  defp shell_escape(arg) do
+    if arg =~ ~r/^[a-zA-Z0-9._\-\/=:@]+$/ do
+      arg
+    else
+      "'" <> String.replace(arg, "'", "'\\''") <> "'"
+    end
   end
 end
