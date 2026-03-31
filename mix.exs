@@ -12,7 +12,7 @@ defmodule Ghostty.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      dialyzer: [plt_add_apps: []],
+      dialyzer: [plt_add_apps: [], ignore_warnings: ".dialyzer_ignore.exs"],
       name: "Ghostty",
       description: "Terminal emulator library for the BEAM — libghostty-vt NIFs with OTP integration.",
       source_url: @source_url,

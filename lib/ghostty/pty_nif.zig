@@ -50,37 +50,42 @@ fn get_errno() c_int {
         return c.__errno_location().*;
 }
 
-fn reader_loop(master_fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
+fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
     var buf: [4096]u8 = undefined;
 
     while (!closed.load(.acquire)) {
         var pfd = [_]c.struct_pollfd{.{
             .fd = master_fd,
-            .events = c.POLLIN,
+            .events = c.POLLIN | c.POLLHUP,
             .revents = 0,
         }};
 
         const poll_ret = c.poll(&pfd, 1, 100);
         if (poll_ret <= 0) continue;
-        if (pfd[0].revents & c.POLLIN == 0) continue;
 
         const n = c.read(master_fd, &buf, buf.len);
-        if (n <= 0) {
-            if (n == 0 or (n < 0 and get_errno() == c.EIO)) {
-                if (!closed.load(.acquire)) {
-                    const env = beam.alloc_env();
-                    beam.send(owner, .{ .exit, @as(i32, 0) }, .{ .env = env }) catch {}; // process may have died
-                    beam.free_env(env);
-                }
-                return;
-            }
+        if (n > 0) {
+            const slice = buf[0..@intCast(n)];
+            const env = beam.alloc_env();
+            beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {}; // process may have died
+            beam.free_env(env);
             continue;
         }
 
-        const slice = buf[0..@intCast(n)];
-        const env = beam.alloc_env();
-        beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {}; // process may have died
-        beam.free_env(env);
+        if (n < 0 and get_errno() == c.EINTR) continue;
+
+        if (pfd[0].revents & c.POLLHUP != 0 or n == 0 or (n < 0 and get_errno() == c.EIO)) {
+            var status: c_int = 0;
+            _ = c.waitpid(child_pid, &status, 0);
+
+            if (!closed.load(.acquire)) {
+                const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
+                const env = beam.alloc_env();
+                beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {}; // process may have died
+                beam.free_env(env);
+            }
+            return;
+        }
     }
 }
 
@@ -106,7 +111,7 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
         const allocator = arena.allocator();
 
         const cmd_z = try allocator.dupeZ(u8, cmd);
-        var argv = try allocator.alloc(?[*:0]const u8, args.len + 2);
+        const argv = try allocator.alloc(?[*:0]u8, args.len + 2);
         argv[0] = @ptrCast(cmd_z.ptr);
 
         for (args, 0..) |arg, i| {
@@ -121,7 +126,7 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
     }
 
     const flags = c.fcntl(master_fd, c.F_GETFL);
-    _ = c.fcntl(master_fd, c.F_SETFL, flags | c.O_NONBLOCK);
+    _ = c.fcntl(master_fd, c.F_SETFL, flags & ~@as(c_int, c.O_NONBLOCK));
 
     const res = try PtyResource.create(.{
         .master_fd = master_fd,
@@ -132,7 +137,7 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
 
     const data = res.unpack();
     const closed_ptr = @constCast(&data.closed);
-    _ = std.Thread.spawn(.{}, reader_loop, .{ master_fd, owner, closed_ptr }) catch
+    _ = std.Thread.spawn(.{}, reader_loop, .{ master_fd, pid, owner, closed_ptr }) catch
         return error.thread_spawn_failed;
 
     return res;
