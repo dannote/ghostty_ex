@@ -17,8 +17,6 @@ jobs:
           - { target: x86_64-linux-gnu,   os: ubuntu-latest }
           - { target: aarch64-linux-gnu,  os: ubuntu-latest }
           - { target: aarch64-macos-none, os: macos-latest }
-    env:
-      GHOSTTY_BUILD: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -32,12 +30,44 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
-      - name: Setup and build
+      - name: Build libghostty-vt
+        run: |
+          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
+          cd /tmp/ghostty-src
+          git fetch --depth 1 origin baad0aa6669dc576872831752be0f30debecbfd1
+          git checkout baad0aa6669dc576872831752be0f30debecbfd1
+          zig build -Demit-lib-vt -Doptimize=ReleaseFast
+
+      - name: Install libghostty-vt
+        run: |
+          # Install to priv/ (source of truth)
+          mkdir -p priv/lib priv/include
+          cp /tmp/ghostty-src/zig-out/lib/libghostty-vt.* priv/lib/ 2>/dev/null || true
+          cp -R /tmp/ghostty-src/zig-out/include/ghostty priv/include/
+
+          # Install to _build priv/ (where Zigler looks)
+          for env in dev test; do
+            dest=_build/$env/lib/ghostty/priv
+            mkdir -p $dest/lib $dest/include
+            cp -R priv/lib/* $dest/lib/
+            cp -R priv/include/* $dest/include/
+
+            # Fix macOS dylib install_name
+            if [ -f "$dest/lib/libghostty-vt.dylib" ]; then
+              real=$(readlink -f $dest/lib/libghostty-vt.dylib 2>/dev/null || realpath $dest/lib/libghostty-vt.dylib)
+              install_name_tool -id "$(cd $dest/lib && pwd)/libghostty-vt.dylib" "$real" 2>/dev/null || true
+            fi
+          done
+
+          ls -la priv/lib/
+
+      - name: Build NIF
+        env:
+          GHOSTTY_BUILD: "1"
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
-          mix ghostty.setup
           mix compile
 
       - name: Package artifact
