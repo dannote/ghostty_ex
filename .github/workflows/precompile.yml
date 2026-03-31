@@ -88,9 +88,13 @@ jobs:
 
           echo "Found NIF: ${LIB_FILE}"
 
-          # On macOS, add rpath so the NIF finds libghostty-vt next to itself
+          # On macOS, patch the dependency to resolve next to the NIF itself
           if [ "$(uname)" = "Darwin" ]; then
-            install_name_tool -add_rpath @loader_path "$LIB_FILE" 2>/dev/null || true
+            cp "$LIB_FILE" "${LIB_FILE}.patched"
+            install_name_tool \
+              -change @rpath/libghostty-vt.dylib @loader_path/libghostty-vt.dylib \
+              "${LIB_FILE}.patched"
+            mv "${LIB_FILE}.patched" "$LIB_FILE"
           fi
 
           # Bundle libghostty-vt alongside the NIF

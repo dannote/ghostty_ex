@@ -94,6 +94,7 @@ defmodule Ghostty.MixProject do
     [
       main: "Ghostty",
       extras: ["README.md", "CHANGELOG.md"],
+      assets: %{"examples" => "examples"},
       source_ref: "v#{@version}",
       groups_for_modules: [
         Core: [Ghostty, Ghostty.Terminal, Ghostty.PTY],
