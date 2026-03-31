@@ -63,6 +63,7 @@ jobs:
       - name: Build NIF
         env:
           GHOSTTY_BUILD: "1"
+          DYLD_LIBRARY_PATH: _build/dev/lib/ghostty/priv/lib
         run: |
           mix local.hex --force
           mix local.rebar --force
