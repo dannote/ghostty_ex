@@ -34,7 +34,6 @@
 
 - `Ghostty.KeyEvent` — strict validation, raises on unknown keys
 - `Ghostty.MouseEvent` — strict validation, raises on unknown buttons
-- `Ghostty.Mods` — shared modifier bitmask encoding
 
 ### Build
 

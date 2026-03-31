@@ -88,12 +88,25 @@ jobs:
 
           echo "Found NIF: ${LIB_FILE}"
 
+          # On macOS, patch the NIF to find libghostty-vt next to itself
+          if [ "$(uname)" = "Darwin" ]; then
+            install_name_tool -change @rpath/libghostty-vt.dylib @loader_path/libghostty-vt.dylib "$LIB_FILE"
+          fi
+
+          # Bundle libghostty-vt alongside the NIF
+          FILES="$(basename "$LIB_FILE")"
+          for vt in $BUILD_PRIV/libghostty-vt.*; do
+            [ -f "$vt" ] && FILES="$FILES $(basename "$vt")"
+          done
+
+          echo "Packaging: $FILES"
+
           mkdir -p artifacts
           ARTIFACT_NAME="${BASENAME}-v${VERSION}-${{ matrix.target }}.so.tar.gz"
 
           tar czf "artifacts/${ARTIFACT_NAME}" \
             -C "$(dirname "$LIB_FILE")" \
-            "$(basename "$LIB_FILE")"
+            $FILES
 
           echo "Packaged: ${ARTIFACT_NAME}"
 
