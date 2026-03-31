@@ -14,8 +14,6 @@ jobs:
         include:
           - { os: ubuntu-latest, otp: '27', elixir: '1.18' }
           - { os: macos-latest, otp: '27', elixir: '1.18' }
-    env:
-      GHOSTTY_BUILD: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -30,8 +28,8 @@ jobs:
 
       - run: mix deps.get
       - run: mix ghostty.setup
-      - run: mix compile --force --warnings-as-errors
+      - run: GHOSTTY_BUILD=1 mix compile --force --warnings-as-errors
       - run: mix format --check-formatted
       - run: mix credo --strict
       - run: mix ex_dna
-      - run: mix test
+      - run: GHOSTTY_BUILD=1 mix test
