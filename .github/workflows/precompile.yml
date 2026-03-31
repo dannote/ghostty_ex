@@ -134,6 +134,10 @@ jobs:
         run: |
           mix local.hex --force
           mix deps.get
+
+          # Clear stale checksums so the download task can regenerate them
+          echo '[]' > checksum-Ghostty.Terminal.Nif.exs
+
           mix zigler_precompiled.download \
             --module Ghostty.Terminal.Nif \
             --base-url "https://github.com/dannote/ghostty_ex/releases/download/${GITHUB_REF#refs/tags/}" \
