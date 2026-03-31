@@ -97,17 +97,7 @@ defmodule Ghostty.PTY do
     rows = Keyword.get(opts, :rows, 24)
     owner = Keyword.fetch!(opts, :owner)
 
-    # Command is passed through `sh -c` because the NIF uses execvp with
-    # a single string. This handles PATH resolution and allows shell
-    # features like pipes and redirects.
-    shell_cmd =
-      if args == [] do
-        cmd
-      else
-        [cmd | args] |> Enum.map_join(" ", &shell_escape/1)
-      end
-
-    ref = Nif.nif_pty_open(shell_cmd, 0, cols, rows, owner)
+    ref = Nif.nif_pty_open(cmd, args, cols, rows, owner)
     {:ok, %__MODULE__{ref: ref, owner: owner}}
   rescue
     e in [ErlangError, ArgumentError] ->
@@ -128,13 +118,5 @@ defmodule Ghostty.PTY do
   def handle_call({:resize, cols, rows}, _from, state) do
     Nif.nif_pty_resize(state.ref, cols, rows)
     {:reply, :ok, state}
-  end
-
-  defp shell_escape(arg) do
-    if arg =~ ~r/^[a-zA-Z0-9._\-\/=:@]+$/ do
-      arg
-    else
-      "'" <> String.replace(arg, "'", "'\\''") <> "'"
-    end
   end
 end

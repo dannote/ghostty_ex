@@ -36,6 +36,17 @@ defmodule Ghostty.PTYTest do
       refute data =~ "not_tty"
     end
 
+    test "passes argv entries without shell joining" do
+      {:ok, _pty} =
+        Ghostty.PTY.start_link(
+          cmd: "/usr/bin/python3",
+          args: ["-c", "import sys; print(sys.argv[1])", "hello world"]
+        )
+
+      data = collect_data(2_000)
+      assert data =~ "hello world"
+    end
+
     test "resize does not crash" do
       {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/cat")
       assert :ok = Ghostty.PTY.resize(pty, 120, 40)

@@ -84,8 +84,7 @@ fn reader_loop(master_fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool
     }
 }
 
-pub fn nif_pty_open(cmd: []const u8, _args_unused: beam.term, cols: u16, rows: u16, owner: beam.pid) !PtyResource {
-    _ = _args_unused;
+pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: u16, owner: beam.pid) !PtyResource {
 
     var ws: c.struct_winsize = .{
         .ws_col = cols,
@@ -102,14 +101,22 @@ pub fn nif_pty_open(cmd: []const u8, _args_unused: beam.term, cols: u16, rows: u
     if (pid == 0) {
         _ = c.setenv("TERM", "xterm-256color", 1);
 
-        var cmd_buf: [4096]u8 = undefined;
-        const n = @min(cmd.len, cmd_buf.len - 1);
-        @memcpy(cmd_buf[0..n], cmd[0..n]);
-        cmd_buf[n] = 0;
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
-        const cmd_z: [*:0]const u8 = @ptrCast(&cmd_buf);
-        var argv = [_:null]?[*:0]const u8{ "sh", "-c", cmd_z, null };
-        _ = c.execvp("/bin/sh", @ptrCast(&argv));
+        const cmd_z = try allocator.dupeZ(u8, cmd);
+        var argv = try allocator.alloc(?[*:0]const u8, args.len + 2);
+        argv[0] = @ptrCast(cmd_z.ptr);
+
+        for (args, 0..) |arg, i| {
+            const arg_z = try allocator.dupeZ(u8, arg);
+            argv[i + 1] = @ptrCast(arg_z.ptr);
+        }
+
+        argv[args.len + 1] = null;
+
+        _ = c.execvp(@ptrCast(cmd_z.ptr), @ptrCast(argv.ptr));
         c._exit(127);
     }
 
