@@ -215,6 +215,7 @@ pub fn nif_pty_resize(res: PtyResource, cols: u16, rows: u16) void {
         .ws_ypixel = 0,
     };
     _ = c.ioctl(pty.master_fd, c.TIOCSWINSZ, &ws);
+    _ = c.kill(pty.child_pid, c.SIGWINCH);
 }
 
 pub fn nif_pty_close(res: PtyResource) void {

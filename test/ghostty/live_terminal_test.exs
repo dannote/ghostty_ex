@@ -68,7 +68,14 @@ defmodule Ghostty.LiveTerminalTest do
     end
 
     test "returns :none for unidentified keys", %{term: term} do
-      params = %{"key" => "Unidentified", "shiftKey" => false, "ctrlKey" => false, "altKey" => false, "metaKey" => false}
+      params = %{
+        "key" => "Unidentified",
+        "shiftKey" => false,
+        "ctrlKey" => false,
+        "altKey" => false,
+        "metaKey" => false
+      }
+
       assert :none = LiveTerminal.handle_key(term, params)
     end
 
@@ -100,7 +107,14 @@ defmodule Ghostty.LiveTerminalTest do
     end
 
     test "does not crash the terminal server on unknown keys", %{term: term} do
-      params = %{"key" => "AudioVolumeUp", "shiftKey" => false, "ctrlKey" => false, "altKey" => false, "metaKey" => false}
+      params = %{
+        "key" => "AudioVolumeUp",
+        "shiftKey" => false,
+        "ctrlKey" => false,
+        "altKey" => false,
+        "metaKey" => false
+      }
+
       assert :none = LiveTerminal.handle_key(term, params)
       assert Process.alive?(term)
     end

@@ -7,7 +7,9 @@ defmodule Ghostty.PTY do
   the requested dimensions.
 
   Output is sent as `{:data, binary}` messages to the calling process.
-  Exit is reported as `{:exit, status}`.
+  Exit is reported as `{:exit, status}` when the child exits naturally.
+  Calling `close/1` may suppress the exit message if the child is
+  terminated before the reader thread observes the exit.
 
   ## Examples
 
@@ -76,14 +78,18 @@ defmodule Ghostty.PTY do
     GenServer.call(pty, {:write, IO.iodata_to_binary(data)})
   end
 
-  @doc "Resizes the PTY. Sends SIGWINCH to the child."
+  @doc "Resizes the PTY and sends SIGWINCH to the child."
   @spec resize(GenServer.server(), pos_integer(), pos_integer()) :: :ok
   def resize(pty, cols, rows)
       when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0 do
     GenServer.call(pty, {:resize, cols, rows})
   end
 
-  @doc "Closes the PTY and terminates the child process."
+  @doc """
+  Closes the PTY and terminates the child process.
+
+  Raises if the server does not exist.
+  """
   @spec close(GenServer.server()) :: :ok
   def close(pty) do
     GenServer.stop(pty)
@@ -126,7 +132,8 @@ defmodule Ghostty.PTY do
        when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0,
        do: :ok
 
-  defp validate_size!(_cols, _rows) do
-    raise ArgumentError, "cols and rows must be positive integers"
+  defp validate_size!(cols, rows) do
+    raise ArgumentError,
+          "expected cols and rows to be positive integers, got: cols=#{inspect(cols)}, rows=#{inspect(rows)}"
   end
 end
