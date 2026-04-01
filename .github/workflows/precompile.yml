@@ -72,6 +72,23 @@ jobs:
           mix deps.get
           mix compile
 
+      - name: Fix macOS packaged install names
+        if: runner.os == 'macOS'
+        run: |
+          BUILD_PRIV=_build/dev/lib/ghostty/priv/lib
+          TERMINAL_NIF=$BUILD_PRIV/Elixir.Ghostty.Terminal.Nif.so
+          VT_DYLIB=$BUILD_PRIV/libghostty-vt.dylib
+
+          for vt in $BUILD_PRIV/libghostty-vt*.dylib; do
+            [ -f "$vt" ] && install_name_tool -id @loader_path/libghostty-vt.dylib "$vt"
+          done
+
+          current_dep=$(otool -L "$TERMINAL_NIF" | awk '/libghostty-vt\.dylib/ {print $1; exit}')
+          install_name_tool -change "$current_dep" @loader_path/libghostty-vt.dylib "$TERMINAL_NIF"
+
+          otool -L "$TERMINAL_NIF" | grep '@loader_path/libghostty-vt.dylib'
+          otool -D "$VT_DYLIB" | grep '@loader_path/libghostty-vt.dylib'
+
       - name: Package artifacts
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}

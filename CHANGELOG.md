@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 (2026-04-02)
+
+### Build
+
+- Fix the macOS precompiled terminal artifact so `libghostty-vt.dylib` is linked via `@loader_path` instead of a CI-only absolute path
+- Verify the packaged macOS terminal artifact before upload in the precompile workflow
+
 ## 0.2.2 (2026-04-01)
 
 ### LiveView
