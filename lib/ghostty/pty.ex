@@ -97,6 +97,8 @@ defmodule Ghostty.PTY do
     rows = Keyword.get(opts, :rows, 24)
     owner = Keyword.fetch!(opts, :owner)
 
+    validate_size!(cols, rows)
+
     ref = Nif.nif_pty_open(cmd, args, cols, rows, owner)
     {:ok, %__MODULE__{ref: ref, owner: owner}}
   rescue
@@ -118,5 +120,13 @@ defmodule Ghostty.PTY do
   def handle_call({:resize, cols, rows}, _from, state) do
     Nif.nif_pty_resize(state.ref, cols, rows)
     {:reply, :ok, state}
+  end
+
+  defp validate_size!(cols, rows)
+       when is_integer(cols) and cols > 0 and is_integer(rows) and rows > 0,
+       do: :ok
+
+  defp validate_size!(_cols, _rows) do
+    raise ArgumentError, "cols and rows must be positive integers"
   end
 end

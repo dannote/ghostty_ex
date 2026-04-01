@@ -129,19 +129,19 @@ Ghostty.Terminal.resize(term, 120, 40)
 
 ## Examples
 
-See the [`examples/`](examples/) directory:
+See the [`examples/`](https://github.com/dannote/ghostty_ex/tree/master/examples) directory:
 
 | Example | What it does |
 |---|---|
-| [`hello.exs`](examples/hello.exs) | Write with colors, read back plain + HTML |
-| [`ansi_stripper.exs`](examples/ansi_stripper.exs) | Pipe stdin, strip ANSI codes |
-| [`html_recorder.exs`](examples/html_recorder.exs) | Capture command output as styled HTML |
-| [`progress_bar.exs`](examples/progress_bar.exs) | `\r` overwrites → final screen state only |
-| [`reflow.exs`](examples/reflow.exs) | Text reflow on resize |
-| [`supervised.exs`](examples/supervised.exs) | Named terminals in a supervision tree |
-| [`diff.exs`](examples/diff.exs) | Terminal-aware Myers diff |
-| [`expect.exs`](examples/expect.exs) | Expect-like automation with pattern matching |
-| [`pool.exs`](examples/pool.exs) | Reusable terminal pool for concurrent processing |
+| [`hello.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/hello.exs) | Write with colors, read back plain + HTML |
+| [`ansi_stripper.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/ansi_stripper.exs) | Pipe stdin, strip ANSI codes |
+| [`html_recorder.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/html_recorder.exs) | Capture command output as styled HTML |
+| [`progress_bar.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/progress_bar.exs) | `\r` overwrites → final screen state only |
+| [`reflow.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/reflow.exs) | Text reflow on resize |
+| [`supervised.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/supervised.exs) | Named terminals in a supervision tree |
+| [`diff.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/diff.exs) | Terminal-aware Myers diff |
+| [`expect.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/expect.exs) | Expect-like automation with pattern matching |
+| [`pool.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/pool.exs) | Reusable terminal pool for concurrent processing |
 
 ## Development
 

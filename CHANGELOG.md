@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.1 (2026-03-31)
+
+### PTY
+
+- Validate PTY size during startup as well as `resize/3`
+- Remove generated PTY Zig wrapper file from the repo
+- Ignore generated PTY Zig wrapper file going forward
+
+### Build
+
+- Make `mix ghostty.setup` copy `priv/` artifacts more robustly from the project root
+- Refresh build `priv/` directories deterministically during setup
+
+### Docs
+
+- Use GitHub example links in README so HexDocs does not warn about missing local `examples/` paths
+
 ## 0.2.0 (2026-03-30)
 
 ### Terminal

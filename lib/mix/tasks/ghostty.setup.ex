@@ -69,68 +69,74 @@ defmodule Mix.Tasks.Ghostty.Setup do
 
   defp install(source_dir) do
     zig_out = Path.join(source_dir, "zig-out")
-    priv = Path.join(File.cwd!(), "priv")
+    priv_dir = Path.join(project_root(), "priv")
+    lib_dir = Path.join(priv_dir, "lib")
+    include_dir = Path.join(priv_dir, "include")
 
-    lib_dir = Path.join(priv, "lib")
-    include_dir = Path.join(priv, "include")
-
+    File.rm_rf!(lib_dir)
+    File.rm_rf!(include_dir)
     File.mkdir_p!(lib_dir)
     File.mkdir_p!(include_dir)
 
-    Path.join(zig_out, "lib")
-    |> File.ls!()
-    |> Enum.filter(&String.contains?(&1, "ghostty-vt"))
-    |> Enum.each(fn file ->
-      src = Path.join([zig_out, "lib", file])
-      dest = Path.join(lib_dir, file)
-      File.cp!(src, dest)
-      Mix.shell().info("  #{dest}")
-    end)
-
-    src_include = Path.join([zig_out, "include", "ghostty"])
-
-    if File.dir?(src_include) do
-      dest = Path.join(include_dir, "ghostty")
-      File.rm_rf!(dest)
-      File.cp_r!(src_include, dest)
-      Mix.shell().info("  #{dest}/")
-    end
-
+    copy_libs(Path.join(zig_out, "lib"), lib_dir)
+    copy_include_tree(Path.join([zig_out, "include", "ghostty"]), Path.join(include_dir, "ghostty"))
     fix_dylib_install_name(lib_dir)
   end
 
   defp install_to_build do
-    src_priv = Path.join(File.cwd!(), "priv")
+    src_priv = Path.join(project_root(), "priv")
 
     for env <- ["dev", "test"] do
-      dest_priv = Path.join([File.cwd!(), "_build", env, "lib", "ghostty", "priv"])
-      File.mkdir_p!(Path.join(dest_priv, "lib"))
-      File.mkdir_p!(Path.join(dest_priv, "include"))
-      File.cp_r!(Path.join(src_priv, "lib"), Path.join(dest_priv, "lib"))
-      File.cp_r!(Path.join(src_priv, "include"), Path.join(dest_priv, "include"))
-      fix_dylib_install_name(Path.join(dest_priv, "lib"))
+      dest_priv = Path.join([project_root(), "_build", env, "lib", "ghostty", "priv"])
+      dest_lib = Path.join(dest_priv, "lib")
+      dest_include = Path.join(dest_priv, "include")
+
+      File.rm_rf!(dest_priv)
+      File.mkdir_p!(dest_lib)
+      File.mkdir_p!(dest_include)
+
+      copy_libs(Path.join(src_priv, "lib"), dest_lib)
+      copy_include_tree(Path.join(src_priv, "include"), dest_include)
+      fix_dylib_install_name(dest_lib)
     end
+  end
+
+  defp copy_libs(src_dir, dest_dir) do
+    src_dir
+    |> File.ls!()
+    |> Enum.filter(&String.contains?(&1, "ghostty-vt"))
+    |> Enum.each(fn file ->
+      src = Path.join(src_dir, file)
+      dest = Path.join(dest_dir, file)
+      File.cp!(src, dest)
+      Mix.shell().info("  #{dest}")
+    end)
+  end
+
+  defp copy_include_tree(src, dest) do
+    unless File.dir?(src) do
+      Mix.raise("missing include directory: #{src}")
+    end
+
+    File.rm_rf!(dest)
+    File.mkdir_p!(Path.dirname(dest))
+    File.cp_r!(src, dest)
+    Mix.shell().info("  #{dest}/")
   end
 
   defp fix_dylib_install_name(lib_dir) do
     case :os.type() do
       {:unix, :darwin} ->
         dylib = Path.join(lib_dir, "libghostty-vt.dylib")
-        real = Path.expand(dylib) |> resolve_symlink()
-        System.cmd("install_name_tool", ["-id", Path.expand(dylib), real], stderr_to_stdout: true)
+        absolute_id = Path.expand(dylib)
+
+        for file <- File.ls!(lib_dir), String.ends_with?(file, ".dylib") do
+          path = Path.join(lib_dir, file)
+          System.cmd("install_name_tool", ["-id", absolute_id, path], stderr_to_stdout: true)
+        end
 
       _ ->
         :ok
-    end
-  end
-
-  defp resolve_symlink(path) do
-    case File.read_link(path) do
-      {:ok, target} ->
-        path |> Path.dirname() |> Path.join(target) |> Path.expand() |> resolve_symlink()
-
-      {:error, _} ->
-        path
     end
   end
 
@@ -140,6 +146,11 @@ defmodule Mix.Tasks.Ghostty.Setup do
     if status != 0 do
       Mix.raise("#{cmd} #{Enum.join(args, " ")} failed:\n#{output}")
     end
+  end
+
+  defp project_root do
+    Mix.Project.project_file()
+    |> Path.dirname()
   end
 
   defp short_ref, do: String.slice(@ghostty_ref, 0, 7)

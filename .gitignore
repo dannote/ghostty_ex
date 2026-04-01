@@ -12,3 +12,4 @@ output.html
 /priv/lib/
 /priv/include/
 lib/ghostty/terminal/.Elixir.Ghostty.Terminal.Nif.zig
+lib/ghostty/.Elixir.Ghostty.PTY.Nif.zig
