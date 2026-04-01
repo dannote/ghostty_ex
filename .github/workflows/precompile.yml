@@ -72,40 +72,45 @@ jobs:
           mix deps.get
           mix compile
 
-      - name: Package artifact
+      - name: Package artifacts
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          BASENAME="Elixir.Ghostty.Terminal.Nif"
           BUILD_PRIV=_build/dev/lib/ghostty/priv/lib
+          mkdir -p artifacts
 
-          LIB_FILE=$(find $BUILD_PRIV -name "*${BASENAME}.*" \
-            \( -name "*.so" -o -name "*.dylib" \) \
-            -not -name "*.[0-9]*" | sort | head -1)
+          package_nif() {
+            local basename="$1"
+            local files="$2"
+            local lib_file
 
-          if [ -z "$LIB_FILE" ]; then
-            echo "ERROR: Could not find built NIF library"
-            find _build -name "*${BASENAME}*" -type f 2>/dev/null | head -20
-            exit 1
-          fi
+            lib_file=$(find "$BUILD_PRIV" -name "*${basename}.*" \
+              \( -name "*.so" -o -name "*.dylib" \) \
+              -not -name "*.[0-9]*" | sort | head -1)
 
-          echo "Found NIF: ${LIB_FILE}"
+            if [ -z "$lib_file" ]; then
+              echo "ERROR: Could not find built NIF library for ${basename}"
+              find _build -name "*${basename}*" -type f 2>/dev/null | head -20
+              exit 1
+            fi
 
-          # Bundle libghostty-vt alongside the NIF
-          FILES="$(basename "$LIB_FILE")"
+            echo "Found NIF: ${lib_file}"
+            echo "Packaging: ${files}"
+
+            local artifact_name="${basename}-v${VERSION}-${{ matrix.target }}.so.tar.gz"
+            tar czf "artifacts/${artifact_name}" \
+              -C "$(dirname "$lib_file")" \
+              ${files}
+
+            echo "Packaged: ${artifact_name}"
+          }
+
+          terminal_files="Elixir.Ghostty.Terminal.Nif.so"
           for vt in $BUILD_PRIV/libghostty-vt.*; do
-            [ -f "$vt" ] && FILES="$FILES $(basename "$vt")"
+            [ -f "$vt" ] && terminal_files="$terminal_files $(basename "$vt")"
           done
 
-          echo "Packaging: $FILES"
-
-          mkdir -p artifacts
-          ARTIFACT_NAME="${BASENAME}-v${VERSION}-${{ matrix.target }}.so.tar.gz"
-
-          tar czf "artifacts/${ARTIFACT_NAME}" \
-            -C "$(dirname "$LIB_FILE")" \
-            $FILES
-
-          echo "Packaged: ${ARTIFACT_NAME}"
+          package_nif "Elixir.Ghostty.Terminal.Nif" "$terminal_files"
+          package_nif "Elixir.Ghostty.PTY.Nif" "Elixir.Ghostty.PTY.Nif.so"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
@@ -132,15 +137,16 @@ jobs:
           mix local.hex --force
           mix deps.get
 
-          # Clear stale checksums so the download task can regenerate them
           echo '[]' > checksum-Ghostty.Terminal.Nif.exs
+          echo '[]' > checksum-Ghostty.PTY.Nif.exs
 
           mix zigler_precompiled.download Ghostty.Terminal.Nif --all --ignore-unavailable
+          mix zigler_precompiled.download Ghostty.PTY.Nif --all --ignore-unavailable
 
       - name: Commit checksum file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add checksum-Ghostty.Terminal.Nif.exs
+          git add checksum-Ghostty.Terminal.Nif.exs checksum-Ghostty.PTY.Nif.exs
           git commit -m "Update precompiled NIF checksums for ${GITHUB_REF#refs/tags/}" || true
           git push origin HEAD:master

@@ -14,8 +14,8 @@ def deps do
 end
 ```
 
-Precompiled NIF binaries are downloaded automatically for x86_64 Linux,
-aarch64 Linux, and aarch64 macOS.
+Precompiled terminal and PTY NIF binaries are downloaded automatically for
+x86_64 Linux, aarch64 Linux, and aarch64 macOS.
 
 ## Usage
 
@@ -145,7 +145,7 @@ See the [`examples/`](examples/) directory:
 
 ## Development
 
-[Zig 0.15+](https://ziglang.org) required to build from source.
+[Zig 0.15+](https://ziglang.org) is only required for source builds.
 
 ```bash
 git clone https://github.com/dannote/ghostty_ex

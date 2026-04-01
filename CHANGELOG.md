@@ -39,9 +39,9 @@
 
 - `mix ghostty.setup` — one-command contributor onboarding
 - Precompiled NIFs via `zigler_precompiled`
-- Precompile workflow builds and uploads terminal NIF artifacts for Linux x86_64, Linux aarch64, and macOS aarch64
+- Precompile workflow builds and uploads terminal and PTY NIF artifacts for Linux x86_64, Linux aarch64, and macOS aarch64
 - Precompiled terminal artifacts bundle `libghostty-vt` so clean installs work without manual setup
-- Release workflow regenerates and commits `checksum-Ghostty.Terminal.Nif.exs`
+- Release workflow regenerates and commits `checksum-Ghostty.Terminal.Nif.exs` and `checksum-Ghostty.PTY.Nif.exs`
 - zlint for Zig code
 
 ### Docs

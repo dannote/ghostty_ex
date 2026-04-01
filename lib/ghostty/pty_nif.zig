@@ -38,8 +38,8 @@ pub const PtyCallbacks = struct {
 fn do_close(data: anytype) void {
     const closed_ptr = @constCast(&data.closed);
     if (closed_ptr.swap(true, .acq_rel)) return;
-    _ = c.close(data.master_fd);
     _ = c.kill(data.child_pid, c.SIGHUP);
+    _ = c.close(data.master_fd);
     _ = c.waitpid(data.child_pid, null, c.WNOHANG);
 }
 
@@ -50,38 +50,71 @@ fn get_errno() c_int {
         return c.__errno_location().*;
 }
 
+fn is_would_block(errno: c_int) bool {
+    return errno == c.EAGAIN or errno == c.EWOULDBLOCK;
+}
+
+fn wait_for_fd(fd: c_int, events: c_short, timeout_ms: c_int) bool {
+    var pfd: c.struct_pollfd = .{
+        .fd = fd,
+        .events = events,
+        .revents = 0,
+    };
+
+    while (true) {
+        const rc = c.poll(&pfd, 1, timeout_ms);
+
+        if (rc > 0) return true;
+        if (rc == 0) return false;
+        if (get_errno() == c.EINTR) continue;
+        return false;
+    }
+}
+
 fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
     var buf: [4096]u8 = undefined;
 
     while (!closed.load(.acquire)) {
-        var pfd = [_]c.struct_pollfd{.{
-            .fd = master_fd,
-            .events = c.POLLIN | c.POLLHUP,
-            .revents = 0,
-        }};
-
-        const poll_ret = c.poll(&pfd, 1, 100);
-        if (poll_ret <= 0) continue;
+        if (!wait_for_fd(master_fd, c.POLLIN | c.POLLHUP | c.POLLERR, 100)) continue;
 
         const n = c.read(master_fd, &buf, buf.len);
+
         if (n > 0) {
             const slice = buf[0..@intCast(n)];
             const env = beam.alloc_env();
-            beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {}; // process may have died
+            beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
             beam.free_env(env);
             continue;
         }
 
-        if (n < 0 and get_errno() == c.EINTR) continue;
+        if (n < 0) {
+            const errno = get_errno();
+            if (errno == c.EINTR or is_would_block(errno)) continue;
 
-        if (pfd[0].revents & c.POLLHUP != 0 or n == 0 or (n < 0 and get_errno() == c.EIO)) {
+            if (errno == c.EIO) {
+                var status: c_int = 0;
+                _ = c.waitpid(child_pid, &status, 0);
+
+                if (!closed.load(.acquire)) {
+                    const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
+                    const env = beam.alloc_env();
+                    beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
+                    beam.free_env(env);
+                }
+                return;
+            }
+
+            return;
+        }
+
+        if (n == 0) {
             var status: c_int = 0;
             _ = c.waitpid(child_pid, &status, 0);
 
             if (!closed.load(.acquire)) {
                 const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
                 const env = beam.alloc_env();
-                beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {}; // process may have died
+                beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
                 beam.free_env(env);
             }
             return;
@@ -126,7 +159,7 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
     }
 
     const flags = c.fcntl(master_fd, c.F_GETFL);
-    _ = c.fcntl(master_fd, c.F_SETFL, flags & ~@as(c_int, c.O_NONBLOCK));
+    _ = c.fcntl(master_fd, c.F_SETFL, flags | @as(c_int, c.O_NONBLOCK));
 
     const res = try PtyResource.create(.{
         .master_fd = master_fd,
@@ -137,8 +170,9 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
 
     const data = res.unpack();
     const closed_ptr = @constCast(&data.closed);
-    _ = std.Thread.spawn(.{}, reader_loop, .{ master_fd, pid, owner, closed_ptr }) catch
+    const thread = std.Thread.spawn(.{}, reader_loop, .{ master_fd, pid, owner, closed_ptr }) catch
         return error.thread_spawn_failed;
+    thread.detach();
 
     return res;
 }
@@ -148,14 +182,25 @@ pub fn nif_pty_write(res: PtyResource, data: []const u8) void {
     if (pty.closed.load(.acquire)) return;
 
     var off: usize = 0;
-    while (off < data.len) {
+    while (off < data.len and !pty.closed.load(.acquire)) {
         const n = c.write(pty.master_fd, data.ptr + off, data.len - off);
+
         if (n > 0) {
             off += @intCast(n);
-        } else if (n < 0) {
-            if (get_errno() == c.EINTR) continue;
-            break;
+            continue;
         }
+
+        if (n < 0) {
+            const errno = get_errno();
+            if (errno == c.EINTR) continue;
+
+            if (is_would_block(errno)) {
+                _ = wait_for_fd(pty.master_fd, c.POLLOUT, 100);
+                continue;
+            }
+        }
+
+        break;
     }
 }
 

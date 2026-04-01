@@ -61,13 +61,14 @@ Normal release flow:
    ```
 5. Wait for `.github/workflows/precompile.yml` to finish.
    It will:
-   - build terminal precompiled NIF artifacts for:
+   - build terminal and PTY precompiled NIF artifacts for:
      - `x86_64-linux-gnu`
      - `aarch64-linux-gnu`
      - `aarch64-macos-none`
    - upload the release tarballs
    - regenerate `checksum-Ghostty.Terminal.Nif.exs`
-   - commit the checksum update back to `master`
+   - regenerate `checksum-Ghostty.PTY.Nif.exs`
+   - commit the checksum updates back to `master`
 6. Pull the checksum commit locally:
    ```sh
    git pull --ff-only
@@ -78,8 +79,7 @@ Normal release flow:
    mix deps.get
    mix compile
    ```
-   On supported platforms, this should download the precompiled terminal NIF.
-   The PTY NIF is still built locally from source.
+   On supported platforms, this should download the precompiled terminal and PTY NIFs.
 8. Optionally verify source-build path too:
    ```sh
    mix ghostty.setup
@@ -91,9 +91,8 @@ Normal release flow:
    ```
 
 Notes:
-- `Ghostty.Terminal.Nif` is precompiled and downloaded from GitHub releases by default.
-- `Ghostty.PTY.Nif` is not precompiled; it is compiled locally with Zig.
-- The macOS precompiled terminal artifact must bundle `libghostty-vt.dylib`, and the CI workflow already prepares the dylib install name correctly.
+- `Ghostty.Terminal.Nif` and `Ghostty.PTY.Nif` are precompiled and downloaded from GitHub releases by default.
+- The macOS precompiled terminal artifact must bundle `libghostty-vt.dylib` alongside the terminal NIF.
 - If the tag build fails, fix the issue and release a new patch version instead of mutating an already-published Hex release.
 
 **Do not retag after publishing to Hex.** Tag rebuilds change release artifacts and checksums.

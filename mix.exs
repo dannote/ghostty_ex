@@ -86,6 +86,7 @@ defmodule Ghostty.MixProject do
         examples
         mix.exs README.md LICENSE CHANGELOG.md .formatter.exs
         checksum-Ghostty.Terminal.Nif.exs
+        checksum-Ghostty.PTY.Nif.exs
       ]
     ]
   end

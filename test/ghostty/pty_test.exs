@@ -5,64 +5,66 @@ defmodule Ghostty.PTYTest do
     test "captures command output" do
       {:ok, pty} =
         Ghostty.PTY.start_link(
-          cmd: "/bin/echo",
-          args: ["hello_from_pty"]
+          cmd: "/bin/sh",
+          args: ["-c", "printf hello_from_pty; sleep 0.2"]
         )
 
-      data = collect_data(2_000)
+      assert_receive {:data, data}, 1_000
       assert data =~ "hello_from_pty"
-      assert_receive {:exit, _status}, 2_000
-      Ghostty.PTY.close(pty)
+      assert_close(pty)
     end
 
     test "writes to child stdin" do
       {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/cat")
 
       Ghostty.PTY.write(pty, "echo_this\n")
-      data = collect_data(2_000)
+      assert_receive {:data, data}, 1_000
       assert data =~ "echo_this"
-      Ghostty.PTY.close(pty)
+      assert_close(pty)
     end
 
     test "child sees a real TTY" do
-      {:ok, _pty} =
+      {:ok, pty} =
         Ghostty.PTY.start_link(
-          cmd: "/bin/sh",
-          args: ["-c", "test -t 0 && echo tty || echo not_tty"]
+          cmd: "/usr/bin/python3",
+          args: [
+            "-c",
+            "import os, sys, time; print('tty' if os.isatty(0) else 'not_tty'); sys.stdout.flush(); time.sleep(0.2)"
+          ]
         )
 
-      data = collect_data(2_000)
+      assert_receive {:data, data}, 1_000
       assert data =~ "tty"
       refute data =~ "not_tty"
+      assert_close(pty)
     end
 
     test "passes argv entries without shell joining" do
-      {:ok, _pty} =
+      {:ok, pty} =
         Ghostty.PTY.start_link(
           cmd: "/usr/bin/python3",
-          args: ["-c", "import sys; print(sys.argv[1])", "hello world"]
+          args: [
+            "-c",
+            "import sys, time; print(repr(sys.argv)); sys.stdout.flush(); time.sleep(0.2)",
+            "hello world"
+          ]
         )
 
-      data = collect_data(2_000)
-      assert data =~ "hello world"
+      assert_receive {:data, data}, 1_000
+      assert data =~ "['-c', 'hello world']"
+      assert_close(pty)
     end
 
     test "resize does not crash" do
       {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/cat")
       assert :ok = Ghostty.PTY.resize(pty, 120, 40)
-      Ghostty.PTY.close(pty)
+      assert_close(pty)
     end
   end
 
-  defp collect_data(timeout) do
-    collect_data("", timeout)
-  end
-
-  defp collect_data(acc, timeout) do
-    receive do
-      {:data, chunk} -> collect_data(acc <> chunk, 200)
-    after
-      timeout -> acc
-    end
+  defp assert_close(pty) do
+    ref = Process.monitor(pty)
+    assert :ok = Ghostty.PTY.close(pty)
+    assert_receive {:DOWN, ^ref, :process, ^pty, _reason}, 1_000
   end
 end
