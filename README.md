@@ -129,61 +129,62 @@ Ghostty.Terminal.resize(term, 120, 40)
 
 ## LiveView
 
-Embed a terminal in Phoenix LiveView with `Ghostty.LiveTerminal`:
+Drop in a terminal with `Ghostty.LiveTerminal.Component` — it handles
+keyboard events internally so your LiveView only manages the terminal
+and PTY lifecycle:
 
 ```elixir
-# In your LiveView
-def mount(_params, _session, socket) do
-  {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-  {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
-  {:ok, assign(socket, term: term, pty: pty)}
-end
+defmodule MyAppWeb.TerminalLive do
+  use Phoenix.LiveView
 
-def render(assigns) do
-  ~H"""
-  <Ghostty.LiveTerminal.terminal id="term" cols={80} rows={24} />
-  """
-end
-
-def handle_event("key", params, socket) do
-  case Ghostty.LiveTerminal.handle_key(socket.assigns.term, params) do
-    {:ok, data} -> Ghostty.PTY.write(socket.assigns.pty, data)
-    :none -> :ok
+  def mount(_params, _session, socket) do
+    {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
+    {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
+    {:ok, assign(socket, term: term, pty: pty)}
   end
-  {:noreply, push_cells(socket)}
+
+  def render(assigns) do
+    ~H"""
+    <.live_component
+      module={Ghostty.LiveTerminal.Component}
+      id="term"
+      term={@term}
+      pty={@pty}
+    />
+    """
+  end
+
+  def handle_info({:data, data}, socket) do
+    Ghostty.Terminal.write(socket.assigns.term, data)
+    send_update(Ghostty.LiveTerminal.Component, id: "term", refresh: true)
+    {:noreply, socket}
+  end
+
+  def handle_info({:exit, _status}, socket), do: {:noreply, socket}
 end
-
-def handle_info({:data, data}, socket) do
-  Ghostty.Terminal.write(socket.assigns.term, data)
-  {:noreply, push_cells(socket)}
-end
-
-defp push_cells(socket) do
-  cells =
-    socket.assigns.term
-    |> Ghostty.Terminal.cells()
-    |> Enum.map(fn row ->
-      Enum.map(row, fn {char, fg, bg, flags} ->
-        [char, color_to_list(fg), color_to_list(bg), flags]
-      end)
-    end)
-
-  push_event(socket, "render", %{cells: cells})
-end
-
-defp color_to_list(nil), do: nil
-defp color_to_list({r, g, b}), do: [r, g, b]
 ```
 
-Add the JS hook from `priv/static/ghostty.js`:
+For full control, use the low-level helpers directly:
+
+```elixir
+Ghostty.LiveTerminal.key_event_from_params(params)  # parse browser key event
+Ghostty.LiveTerminal.handle_key(term, params)        # parse + encode
+Ghostty.LiveTerminal.push_render(socket, term)       # push cells to client
+```
+
+Add the JS hook to your LiveSocket:
 
 ```javascript
 import { GhosttyTerminal } from "ghostty/priv/static/ghostty"
 
 let liveSocket = new LiveSocket("/live", Socket, {
+  params: {_csrf_token: csrfToken},
   hooks: { GhosttyTerminal }
 })
 ```
+
+See [`examples/live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal)
+for a complete runnable app.
 
 ## Examples
 

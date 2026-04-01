@@ -79,6 +79,7 @@ defmodule Ghostty.MixProject do
         lib/ghostty/pty_nif.ex
         lib/ghostty/pty_nif.zig
         lib/ghostty/live_terminal.ex
+        lib/ghostty/live_terminal/component.ex
         lib/ghostty/mods.ex
         lib/ghostty.ex
         lib/mix
@@ -100,7 +101,7 @@ defmodule Ghostty.MixProject do
       groups_for_modules: [
         Core: [Ghostty, Ghostty.Terminal, Ghostty.PTY],
         "Cell & Events": [Ghostty.Terminal.Cell, Ghostty.KeyEvent, Ghostty.MouseEvent],
-        LiveView: [Ghostty.LiveTerminal],
+        LiveView: [Ghostty.LiveTerminal, Ghostty.LiveTerminal.Component],
         Internal: [Ghostty.Terminal.Nif, Ghostty.PTY.Nif]
       ]
     ]

@@ -15,13 +15,19 @@ export const GhosttyTerminal = {
     this.el.tabIndex = 0
     this.el.addEventListener("keydown", (e) => {
       e.preventDefault()
-      this.pushEvent("key", {
+      const payload = {
         key: e.key,
         shiftKey: e.shiftKey,
         ctrlKey: e.ctrlKey,
         altKey: e.altKey,
         metaKey: e.metaKey,
-      })
+      }
+      const target = this.el.getAttribute("phx-target")
+      if (target) {
+        this.pushEventTo(target, "key", payload)
+      } else {
+        this.pushEvent("key", payload)
+      }
     })
 
     this.handleEvent("render", ({ cells }) => {

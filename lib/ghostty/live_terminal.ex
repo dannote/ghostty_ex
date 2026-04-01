@@ -1,40 +1,23 @@
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ghostty.LiveTerminal do
     @moduledoc """
-    Phoenix LiveView component for rendering a terminal in the browser.
+    Low-level Phoenix LiveView helpers for terminal rendering.
 
-    Requires `phoenix_live_view` as a dependency.
+    Provides utilities for translating browser keyboard events,
+    building JSON-safe render payloads, and pushing terminal state
+    to the client. Use these when you need full control over the
+    LiveView wiring.
 
-    ## Usage
-
-        # In your LiveView
-        def mount(_params, _session, socket) do
-          {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-          {:ok, assign(socket, term: term)}
-        end
-
-        def render(assigns) do
-          ~H\"\"\"
-          <Ghostty.LiveTerminal.terminal id="term" term={@term} />
-          \"\"\"
-        end
-
-        def handle_event("key", params, socket) do
-          Ghostty.LiveTerminal.handle_key(socket.assigns.term, params)
-          {:noreply, push_cells(socket)}
-        end
-
-        defp push_cells(socket) do
-          cells = Ghostty.Terminal.cells(socket.assigns.term)
-          push_event(socket, "render", %{cells: cells})
-        end
+    For a higher-level drop-in component, see `Ghostty.LiveTerminal.Component`.
 
     ## JavaScript hook
 
     Add the hook from `priv/static/ghostty.js` to your LiveView socket:
 
         import { GhosttyTerminal } from "ghostty/priv/static/ghostty"
+
         let liveSocket = new LiveSocket("/live", Socket, {
+          params: {_csrf_token: csrfToken},
           hooks: { GhosttyTerminal }
         })
 
@@ -46,7 +29,12 @@ if Code.ensure_loaded?(Phoenix.Component) do
     attr(:rows, :integer, default: 24)
     attr(:class, :string, default: "")
 
-    @doc "Renders a terminal container with the LiveView hook attached."
+    @doc """
+    Renders a terminal container `<div>` with the `GhosttyTerminal` JS hook.
+
+    This is a stateless function component. For a stateful LiveComponent
+    that handles key events internally, use `Ghostty.LiveTerminal.Component`.
+    """
     def terminal(assigns) do
       ~H"""
       <div
@@ -62,33 +50,94 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    Converts a LiveView key event into a `Ghostty.KeyEvent` and encodes it.
+    Parses browser key event params into a `Ghostty.KeyEvent`.
 
-    Returns `{:ok, binary}` with the escape sequence, or `:none`.
+    Returns a `Ghostty.KeyEvent` struct or `:none` for unrecognized keys.
+
+    ## Examples
+
+        key_event_from_params(%{"key" => "Enter"})
+        #=> %Ghostty.KeyEvent{action: :press, key: :enter}
+
+        key_event_from_params(%{"key" => "Dead"})
+        #=> :none
+
     """
-    def handle_key(term, %{"key" => key} = params) do
-      mods =
-        []
-        |> then(fn m -> if params["shiftKey"], do: [:shift | m], else: m end)
-        |> then(fn m -> if params["ctrlKey"], do: [:ctrl | m], else: m end)
-        |> then(fn m -> if params["altKey"], do: [:alt | m], else: m end)
-        |> then(fn m -> if params["metaKey"], do: [:super | m], else: m end)
-
+    @spec key_event_from_params(map()) :: Ghostty.KeyEvent.t() | :none
+    def key_event_from_params(%{"key" => key} = params) do
       ghostty_key = js_key_to_atom(key)
 
       if ghostty_key == :unidentified do
         :none
       else
-        event = %Ghostty.KeyEvent{
+        %Ghostty.KeyEvent{
           action: :press,
           key: ghostty_key,
-          mods: mods,
+          mods: mods_from_params(params),
           utf8: if(String.length(key) == 1, do: key)
         }
-
-        Ghostty.Terminal.input_key(term, event)
       end
     end
+
+    @doc """
+    Converts a browser key event into an encoded terminal escape sequence.
+
+    Returns `{:ok, binary}` or `:none` for unrecognized keys.
+    """
+    @spec handle_key(GenServer.server(), map()) :: {:ok, binary()} | :none
+    def handle_key(term, params) do
+      case key_event_from_params(params) do
+        :none -> :none
+        event -> Ghostty.Terminal.input_key(term, event)
+      end
+    end
+
+    @doc """
+    Converts terminal cells into a JSON-safe nested list.
+
+    Cell tuples `{grapheme, fg, bg, flags}` become `[grapheme, fg, bg, flags]`
+    where colors are `[r, g, b]` or `nil`.
+    """
+    @spec cells_payload(GenServer.server()) :: [[list()]]
+    def cells_payload(term) do
+      term
+      |> Ghostty.Terminal.cells()
+      |> Enum.map(fn row ->
+        Enum.map(row, fn {char, fg, bg, flags} ->
+          [char, color_to_list(fg), color_to_list(bg), flags]
+        end)
+      end)
+    end
+
+    @doc """
+    Returns a render payload map suitable for `push_event/3`.
+
+        push_event(socket, "render", Ghostty.LiveTerminal.render_payload(term))
+    """
+    @spec render_payload(GenServer.server()) :: map()
+    def render_payload(term) do
+      %{cells: cells_payload(term)}
+    end
+
+    @doc """
+    Pushes a `"render"` event with the current terminal cells to the client.
+    """
+    @spec push_render(Phoenix.LiveView.Socket.t(), GenServer.server()) ::
+            Phoenix.LiveView.Socket.t()
+    def push_render(socket, term) do
+      Phoenix.LiveView.push_event(socket, "render", render_payload(term))
+    end
+
+    defp mods_from_params(params) do
+      []
+      |> then(fn m -> if params["shiftKey"], do: [:shift | m], else: m end)
+      |> then(fn m -> if params["ctrlKey"], do: [:ctrl | m], else: m end)
+      |> then(fn m -> if params["altKey"], do: [:alt | m], else: m end)
+      |> then(fn m -> if params["metaKey"], do: [:super | m], else: m end)
+    end
+
+    defp color_to_list(nil), do: nil
+    defp color_to_list({r, g, b}), do: [r, g, b]
 
     defp js_key_to_atom(key) when byte_size(key) == 1 do
       cond do
