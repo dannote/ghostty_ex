@@ -38,6 +38,8 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
       * `:rows` — terminal height (default: `24`)
       * `:class` — CSS class for the container div (default: `""`)
 
+    Global HTML attributes (`data-*`, `aria-*`, etc.) are passed through.
+
     ## Refreshing
 
     To push updated cells after writing to the terminal from the parent,
@@ -46,15 +48,15 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         Ghostty.Terminal.write(socket.assigns.term, data)
         send_update(Ghostty.LiveTerminal.Component, id: "term", refresh: true)
 
+    The component also pushes an initial render automatically when
+    the LiveView socket is connected.
     """
     use Phoenix.LiveComponent
 
     @impl true
-    def update(%{refresh: true} = _assigns, socket) do
-      {:ok, push_render(socket)}
-    end
-
     def update(assigns, socket) do
+      first_mount? = not Map.has_key?(socket.assigns, :term)
+
       socket =
         socket
         |> assign(assigns)
@@ -62,6 +64,13 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         |> assign_new(:cols, fn -> 80 end)
         |> assign_new(:rows, fn -> 24 end)
         |> assign_new(:class, fn -> "" end)
+
+      socket =
+        if first_mount? or assigns[:refresh] do
+          push_render(socket)
+        else
+          socket
+        end
 
       {:ok, socket}
     end
@@ -100,7 +109,7 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
     end
 
     defp push_render(socket) do
-      Ghostty.LiveTerminal.push_render(socket, socket.assigns.term)
+      Ghostty.LiveTerminal.push_render(socket, socket.assigns.id, socket.assigns.term)
     end
   end
 end

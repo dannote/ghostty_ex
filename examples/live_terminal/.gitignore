@@ -4,4 +4,5 @@
 *.ez
 erl_crash.dump
 /assets/node_modules/
+/assets/package-lock.json
 /screenshots/

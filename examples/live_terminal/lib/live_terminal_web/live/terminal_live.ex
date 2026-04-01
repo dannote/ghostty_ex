@@ -7,13 +7,7 @@ defmodule LiveTerminalWeb.TerminalLive do
     Ghostty.Terminal.write(term, "Welcome to Ghostty LiveTerminal!\r\n")
     Ghostty.Terminal.write(term, "$ \e[32mecho\e[0m hello\r\nhello\r\n$ ")
 
-    socket = assign(socket, term: term)
-
-    if connected?(socket) do
-      send_update(Ghostty.LiveTerminal.Component, id: "term", refresh: true)
-    end
-
-    {:ok, socket}
+    {:ok, assign(socket, term: term)}
   end
 
   def render(assigns) do

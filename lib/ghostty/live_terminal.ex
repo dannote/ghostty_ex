@@ -28,12 +28,15 @@ if Code.ensure_loaded?(Phoenix.Component) do
     attr(:cols, :integer, default: 80)
     attr(:rows, :integer, default: 24)
     attr(:class, :string, default: "")
+    attr(:rest, :global)
 
     @doc """
     Renders a terminal container `<div>` with the `GhosttyTerminal` JS hook.
 
     This is a stateless function component. For a stateful LiveComponent
     that handles key events internally, use `Ghostty.LiveTerminal.Component`.
+
+    Supports global HTML attributes via `:rest`.
     """
     def terminal(assigns) do
       ~H"""
@@ -44,6 +47,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
         data-cols={@cols}
         data-rows={@rows}
         style="font-family: monospace; line-height: 1.2;"
+        {@rest}
       >
       </div>
       """
@@ -110,22 +114,25 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    Returns a render payload map suitable for `push_event/3`.
+    Returns a render payload map for `push_event/3`.
 
-        push_event(socket, "render", Ghostty.LiveTerminal.render_payload(term))
+    Includes the component `id` so the JS hook can filter events
+    when multiple terminals share a LiveView.
     """
-    @spec render_payload(GenServer.server()) :: map()
-    def render_payload(term) do
-      %{cells: cells_payload(term)}
+    @spec render_payload(String.t(), GenServer.server()) :: map()
+    def render_payload(id, term) do
+      %{id: id, cells: cells_payload(term)}
     end
 
     @doc """
-    Pushes a `"render"` event with the current terminal cells to the client.
+    Pushes a `"ghostty:render"` event with the current terminal cells.
+
+    The payload includes the element `id` for multi-terminal filtering.
     """
-    @spec push_render(Phoenix.LiveView.Socket.t(), GenServer.server()) ::
+    @spec push_render(Phoenix.LiveView.Socket.t(), String.t(), GenServer.server()) ::
             Phoenix.LiveView.Socket.t()
-    def push_render(socket, term) do
-      Phoenix.LiveView.push_event(socket, "render", render_payload(term))
+    def push_render(socket, id, term) do
+      Phoenix.LiveView.push_event(socket, "ghostty:render", render_payload(id, term))
     end
 
     defp mods_from_params(params) do

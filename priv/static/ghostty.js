@@ -30,7 +30,8 @@ export const GhosttyTerminal = {
       }
     })
 
-    this.handleEvent("render", ({ cells }) => {
+    this.handleEvent("ghostty:render", ({ id, cells }) => {
+      if (id !== this.el.id) return
       this.renderCells(cells)
     })
 

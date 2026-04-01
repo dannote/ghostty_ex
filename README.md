@@ -167,9 +167,9 @@ end
 For full control, use the low-level helpers directly:
 
 ```elixir
-Ghostty.LiveTerminal.key_event_from_params(params)  # parse browser key event
-Ghostty.LiveTerminal.handle_key(term, params)        # parse + encode
-Ghostty.LiveTerminal.push_render(socket, term)       # push cells to client
+Ghostty.LiveTerminal.key_event_from_params(params)       # parse browser key event
+Ghostty.LiveTerminal.handle_key(term, params)             # parse + encode
+Ghostty.LiveTerminal.push_render(socket, "term-id", term) # push cells to client
 ```
 
 Add the JS hook to your LiveSocket:
@@ -184,7 +184,7 @@ let liveSocket = new LiveSocket("/live", Socket, {
 ```
 
 See [`examples/live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal)
-for a complete runnable app.
+for a complete runnable app with Playwright browser tests.
 
 ## Examples
 
@@ -201,7 +201,7 @@ See the [`examples/`](https://github.com/dannote/ghostty_ex/tree/master/examples
 | [`diff.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/diff.exs) | Terminal-aware Myers diff |
 | [`expect.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/expect.exs) | Expect-like automation with pattern matching |
 | [`pool.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/pool.exs) | Reusable terminal pool for concurrent processing |
-| [`live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal) | Phoenix LiveView app with Playwright browser tests |
+| [`live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal) | Phoenix LiveView terminal renderer with Playwright browser tests |
 
 ## Development
 
@@ -212,7 +212,7 @@ git clone https://github.com/dannote/ghostty_ex
 cd ghostty_ex
 mix deps.get
 mix ghostty.setup            # clones Ghostty, builds libghostty-vt
-GHOSTTY_BUILD=1 mix test     # 44 tests
+GHOSTTY_BUILD=1 mix test
 ```
 
 To use an existing Ghostty checkout:

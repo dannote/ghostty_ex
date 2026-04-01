@@ -2,6 +2,7 @@ defmodule Ghostty.LiveTerminalTest do
   use ExUnit.Case, async: true
 
   alias Ghostty.LiveTerminal
+  import Phoenix.LiveViewTest, only: [render_component: 2]
 
   defp key_params(key, opts \\ []) do
     %{
@@ -15,8 +16,7 @@ defmodule Ghostty.LiveTerminalTest do
 
   describe "terminal/1" do
     test "renders a div with the hook and data attributes" do
-      assigns = %{id: "t1", cols: 80, rows: 24, class: ""}
-      html = Phoenix.LiveViewTest.rendered_to_string(LiveTerminal.terminal(assigns))
+      html = render_component(&LiveTerminal.terminal/1, id: "t1", cols: 80, rows: 24)
 
       assert html =~ ~s(id="t1")
       assert html =~ ~s(phx-hook="GhosttyTerminal")
@@ -25,12 +25,17 @@ defmodule Ghostty.LiveTerminalTest do
     end
 
     test "renders custom dimensions and class" do
-      assigns = %{id: "t2", cols: 120, rows: 40, class: "my-term"}
-      html = Phoenix.LiveViewTest.rendered_to_string(LiveTerminal.terminal(assigns))
+      html = render_component(&LiveTerminal.terminal/1, id: "t2", cols: 120, rows: 40, class: "my-term")
 
       assert html =~ ~s(data-cols="120")
       assert html =~ ~s(data-rows="40")
       assert html =~ ~s(class="my-term")
+    end
+
+    test "passes through global attributes" do
+      html = render_component(&LiveTerminal.terminal/1, id: "t3", "data-test": "yes")
+
+      assert html =~ ~s(data-test="yes")
     end
   end
 
@@ -148,12 +153,12 @@ defmodule Ghostty.LiveTerminalTest do
     end
   end
 
-  describe "render_payload/1" do
-    test "returns map with cells key" do
+  describe "render_payload/2" do
+    test "returns map with id and cells" do
       {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
-      payload = LiveTerminal.render_payload(term)
+      payload = LiveTerminal.render_payload("my-term", term)
 
-      assert %{cells: cells} = payload
+      assert %{id: "my-term", cells: cells} = payload
       assert is_list(cells)
     end
   end
