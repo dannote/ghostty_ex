@@ -34,6 +34,7 @@ defmodule Ghostty.MixProject do
 
   defp aliases do
     [
+      compile: [&compile_with_ghostty_priv/1],
       lint: [
         "format --check-formatted",
         "credo --strict",
@@ -49,6 +50,63 @@ defmodule Ghostty.MixProject do
         "test"
       ]
     ]
+  end
+
+  defp compile_with_ghostty_priv(args) do
+    sync_build_priv_if_needed()
+    Mix.Tasks.Compile.run(args)
+  end
+
+  defp sync_build_priv_if_needed do
+    if System.get_env("GHOSTTY_BUILD") in ["1", "true"] do
+      root = Path.dirname(Mix.Project.project_file())
+      src_priv = Path.join(root, "priv")
+      src_lib = Path.join(src_priv, "lib")
+      src_include = Path.join(src_priv, "include")
+
+      if File.dir?(src_lib) do
+        env = to_string(Mix.env())
+        dest_priv = Path.join([root, "_build", env, "lib", "ghostty", "priv"])
+        dest_lib = Path.join(dest_priv, "lib")
+        dest_include = Path.join(dest_priv, "include")
+
+        File.mkdir_p!(dest_lib)
+
+        src_lib
+        |> File.ls!()
+        |> Enum.filter(&String.contains?(&1, "ghostty-vt"))
+        |> Enum.each(fn file ->
+          File.cp!(Path.join(src_lib, file), Path.join(dest_lib, file))
+        end)
+
+        if File.dir?(src_include) do
+          File.rm_rf!(dest_include)
+          File.mkdir_p!(Path.dirname(dest_include))
+          File.cp_r!(src_include, dest_include)
+        end
+
+        fix_dylib_install_name(dest_lib)
+      end
+    end
+  end
+
+  defp fix_dylib_install_name(lib_dir) do
+    case :os.type() do
+      {:unix, :darwin} ->
+        dylib = Path.join(lib_dir, "libghostty-vt.dylib")
+
+        if File.exists?(dylib) do
+          absolute_id = Path.expand(dylib)
+
+          for file <- File.ls!(lib_dir), String.ends_with?(file, ".dylib") do
+            path = Path.join(lib_dir, file)
+            _ = System.cmd("install_name_tool", ["-id", absolute_id, path], stderr_to_stdout: true)
+          end
+        end
+
+      _ ->
+        :ok
+    end
   end
 
   defp deps do
