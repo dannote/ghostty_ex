@@ -129,7 +129,13 @@ Ghostty.Terminal.resize(term, 120, 40)
 
 ## LiveView
 
-Drop in a terminal with `Ghostty.LiveTerminal.Component` — it handles
+Install the LiveView hook into a Phoenix app with:
+
+```bash
+mix igniter.install ghostty
+```
+
+Then drop in a terminal with `Ghostty.LiveTerminal.Component` — it handles
 keyboard events internally so your LiveView only manages the terminal
 and PTY lifecycle:
 
@@ -172,16 +178,8 @@ Ghostty.LiveTerminal.handle_key(term, params)             # parse + encode
 Ghostty.LiveTerminal.push_render(socket, "term-id", term) # push cells to client
 ```
 
-Add the JS hook to your LiveSocket:
-
-```javascript
-import { GhosttyTerminal } from "ghostty/priv/static/ghostty"
-
-let liveSocket = new LiveSocket("/live", Socket, {
-  params: {_csrf_token: csrfToken},
-  hooks: { GhosttyTerminal }
-})
-```
+`mix igniter.install ghostty` vendors `ghostty.js` into your app assets and wires
+`GhosttyTerminal` into `assets/js/app.js` automatically.
 
 See [`examples/live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal)
 for a complete runnable app with Playwright browser tests.

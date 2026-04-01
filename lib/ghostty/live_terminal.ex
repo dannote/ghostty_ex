@@ -12,14 +12,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     ## JavaScript hook
 
-    Add the hook from `priv/static/ghostty.js` to your LiveView socket:
-
-        import { GhosttyTerminal } from "ghostty/priv/static/ghostty"
-
-        let liveSocket = new LiveSocket("/live", Socket, {
-          params: {_csrf_token: csrfToken},
-          hooks: { GhosttyTerminal }
-        })
+    Run `mix igniter.install ghostty` in your Phoenix app to vendor
+    `ghostty.js` into `assets/vendor/ghostty.js` and wire
+    `GhosttyTerminal` into `assets/js/app.js`.
 
     """
     use Phoenix.Component
