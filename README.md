@@ -127,6 +127,64 @@ Ghostty.PTY.resize(pty, 120, 40)
 Ghostty.Terminal.resize(term, 120, 40)
 ```
 
+## LiveView
+
+Embed a terminal in Phoenix LiveView with `Ghostty.LiveTerminal`:
+
+```elixir
+# In your LiveView
+def mount(_params, _session, socket) do
+  {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
+  {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
+  {:ok, assign(socket, term: term, pty: pty)}
+end
+
+def render(assigns) do
+  ~H"""
+  <Ghostty.LiveTerminal.terminal id="term" cols={80} rows={24} />
+  """
+end
+
+def handle_event("key", params, socket) do
+  case Ghostty.LiveTerminal.handle_key(socket.assigns.term, params) do
+    {:ok, data} -> Ghostty.PTY.write(socket.assigns.pty, data)
+    :none -> :ok
+  end
+  {:noreply, push_cells(socket)}
+end
+
+def handle_info({:data, data}, socket) do
+  Ghostty.Terminal.write(socket.assigns.term, data)
+  {:noreply, push_cells(socket)}
+end
+
+defp push_cells(socket) do
+  cells =
+    socket.assigns.term
+    |> Ghostty.Terminal.cells()
+    |> Enum.map(fn row ->
+      Enum.map(row, fn {char, fg, bg, flags} ->
+        [char, color_to_list(fg), color_to_list(bg), flags]
+      end)
+    end)
+
+  push_event(socket, "render", %{cells: cells})
+end
+
+defp color_to_list(nil), do: nil
+defp color_to_list({r, g, b}), do: [r, g, b]
+```
+
+Add the JS hook from `priv/static/ghostty.js`:
+
+```javascript
+import { GhosttyTerminal } from "ghostty/priv/static/ghostty"
+
+let liveSocket = new LiveSocket("/live", Socket, {
+  hooks: { GhosttyTerminal }
+})
+```
+
 ## Examples
 
 See the [`examples/`](https://github.com/dannote/ghostty_ex/tree/master/examples) directory:
@@ -142,6 +200,7 @@ See the [`examples/`](https://github.com/dannote/ghostty_ex/tree/master/examples
 | [`diff.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/diff.exs) | Terminal-aware Myers diff |
 | [`expect.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/expect.exs) | Expect-like automation with pattern matching |
 | [`pool.exs`](https://github.com/dannote/ghostty_ex/blob/master/examples/pool.exs) | Reusable terminal pool for concurrent processing |
+| [`live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal) | Phoenix LiveView app with Playwright browser tests |
 
 ## Development
 
