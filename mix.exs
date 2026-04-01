@@ -142,7 +142,7 @@ defmodule Ghostty.MixProject do
         lib/ghostty.ex
         lib/mix
         priv/static/ghostty.js
-        examples
+        examples/*.exs
         mix.exs README.md LICENSE CHANGELOG.md .formatter.exs
         checksum-Ghostty.Terminal.Nif.exs
         checksum-Ghostty.PTY.Nif.exs

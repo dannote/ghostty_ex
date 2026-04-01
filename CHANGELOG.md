@@ -4,6 +4,8 @@
 
 ### Build
 
+- Exclude the bundled Phoenix example app dependencies from the Hex package
+- Keep the published package small enough for Hex validation while still shipping the top-level example scripts
 - Fix the macOS precompiled terminal artifact so `libghostty-vt.dylib` is linked via `@loader_path` instead of a CI-only absolute path
 - Verify the packaged macOS terminal artifact before upload in the precompile workflow
 
