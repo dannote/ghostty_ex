@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.2 (2026-04-01)
+
+### LiveView
+
+- Make render events terminal-specific so multiple terminals can coexist in one LiveView safely
+- Push the initial render automatically from `Ghostty.LiveTerminal.Component`
+- Preserve incoming assigns on `send_update(..., refresh: true)`
+- Support global HTML attributes on `Ghostty.LiveTerminal.terminal/1`
+- Refresh the README LiveView docs around the component-first API
+
+### Build
+
+- Re-sync `priv/lib` and `priv/include` into `_build/<env>/lib/ghostty/priv` during `GHOSTTY_BUILD=1` compilation
+- Fix macOS source builds after `_build` cleanup by rewriting the copied `libghostty-vt.dylib` install name to an absolute path
+
 ## 0.2.1 (2026-03-31)
 
 ### PTY

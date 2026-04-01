@@ -5,7 +5,7 @@
 ```sh
 mix ghostty.setup              # clone Ghostty, build libghostty-vt into priv/
 GHOSTTY_BUILD=1 mix compile    # build NIF from source (requires Zig 0.15+)
-mix test                       # full suite (35 tests)
+mix test                       # full suite
 ```
 
 Or use a local Ghostty checkout:
