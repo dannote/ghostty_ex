@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 (2026-04-02)
+
+### LiveView
+
+- Add `mix igniter.install ghostty` to vendor `ghostty.js` into Phoenix assets and wire `GhosttyTerminal` into `assets/js/app.js`
+- Cover the installer with tests for common Phoenix `app.js` layouts
+- Update the LiveView docs to point to the Igniter install flow
+
 ## 0.2.3 (2026-04-02)
 
 ### Build
