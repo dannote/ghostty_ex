@@ -5,5 +5,6 @@ config :live_terminal, LiveTerminalWeb.Endpoint,
   check_origin: false,
   debug_errors: true,
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:live_terminal, ~w(--sourcemap=inline --watch)]}
+    esbuild: {Esbuild, :install_and_run, [:live_terminal, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:live_terminal, ~w(--watch)]}
   ]

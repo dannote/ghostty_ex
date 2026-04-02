@@ -24,7 +24,7 @@ fn on_write_pty(terminal: g.GhosttyTerminal, userdata: ?*anyopaque, data_ptr: [*
     const pid = td.owner_pid orelse return;
     const slice = if (len > 0) data_ptr[0..len] else &[_]u8{};
     const env = beam.alloc_env();
-    beam.send(pid, .{ .pty_write, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {}; // process may have died
+    beam.send(pid, .{ .pty_write, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
     beam.free_env(env);
 }
 
@@ -33,7 +33,7 @@ fn on_bell(terminal: g.GhosttyTerminal, userdata: ?*anyopaque) callconv(.c) void
     const td: *TerminalData = @ptrCast(@alignCast(userdata orelse return));
     const pid = td.owner_pid orelse return;
     const env = beam.alloc_env();
-    beam.send(pid, .bell, .{ .env = env }) catch {}; // process may have died
+    beam.send(pid, .bell, .{ .env = env }) catch {};
     beam.free_env(env);
 }
 
@@ -42,12 +42,11 @@ fn on_title_changed(terminal: g.GhosttyTerminal, userdata: ?*anyopaque) callconv
     const td: *TerminalData = @ptrCast(@alignCast(userdata orelse return));
     const pid = td.owner_pid orelse return;
     const env = beam.alloc_env();
-    beam.send(pid, .title_changed, .{ .env = env }) catch {}; // process may have died
+    beam.send(pid, .title_changed, .{ .env = env }) catch {};
     beam.free_env(env);
 }
 
 pub fn nif_new(cols: u16, rows: u16, max_scrollback: u32) !TerminalResource {
-    // SAFETY: initialized by ghostty_terminal_new below
     var terminal: g.GhosttyTerminal = undefined;
     const result = g.ghostty_terminal_new(null, &terminal, .{
         .cols = cols,
@@ -117,7 +116,6 @@ pub fn nif_snapshot(res: TerminalResource, format_str: []const u8) !beam.term {
     opts.emit = emit;
     opts.trim = true;
 
-    // SAFETY: initialized by ghostty_formatter_terminal_new below
     var fmtr: g.GhosttyFormatter = undefined;
     if (g.ghostty_formatter_terminal_new(null, &fmtr, t, opts) != g.GHOSTTY_SUCCESS)
         return error.formatter_creation_failed;
@@ -139,7 +137,6 @@ pub fn nif_snapshot(res: TerminalResource, format_str: []const u8) !beam.term {
 pub fn nif_encode_key(res: TerminalResource, action: u8, key: u32, mods: u16, utf8: []const u8, unshifted_codepoint: u32) !beam.term {
     const t = res.unpack().terminal;
 
-    // SAFETY: initialized by ghostty_key_encoder_new below
     var encoder: g.GhosttyKeyEncoder = undefined;
     if (g.ghostty_key_encoder_new(null, &encoder) != g.GHOSTTY_SUCCESS)
         return error.encoder_creation_failed;
@@ -147,7 +144,6 @@ pub fn nif_encode_key(res: TerminalResource, action: u8, key: u32, mods: u16, ut
 
     g.ghostty_key_encoder_setopt_from_terminal(encoder, t);
 
-    // SAFETY: initialized by ghostty_key_event_new below
     var event: g.GhosttyKeyEvent = undefined;
     if (g.ghostty_key_event_new(null, &event) != g.GHOSTTY_SUCCESS)
         return error.event_creation_failed;
@@ -188,7 +184,6 @@ pub fn nif_encode_key(res: TerminalResource, action: u8, key: u32, mods: u16, ut
 pub fn nif_encode_mouse(res: TerminalResource, action: u8, button: u8, mods: u16, x: f32, y: f32) !beam.term {
     const t = res.unpack().terminal;
 
-    // SAFETY: initialized by ghostty_mouse_encoder_new below
     var encoder: g.GhosttyMouseEncoder = undefined;
     if (g.ghostty_mouse_encoder_new(null, &encoder) != g.GHOSTTY_SUCCESS)
         return error.encoder_creation_failed;
@@ -205,7 +200,6 @@ pub fn nif_encode_mouse(res: TerminalResource, action: u8, button: u8, mods: u16
     };
     g.ghostty_mouse_encoder_setopt(encoder, g.GHOSTTY_MOUSE_ENCODER_OPT_SIZE, @ptrCast(&size));
 
-    // SAFETY: initialized by ghostty_mouse_event_new below
     var event: g.GhosttyMouseEvent = undefined;
     if (g.ghostty_mouse_event_new(null, &event) != g.GHOSTTY_SUCCESS)
         return error.event_creation_failed;
@@ -238,18 +232,39 @@ pub fn nif_encode_focus(gained: bool) !beam.term {
 }
 
 pub fn nif_render_cells(res: TerminalResource) !beam.term {
-    const t = res.unpack().terminal;
+    const state = try new_render_state(res.unpack().terminal);
+    defer g.ghostty_render_state_free(state);
+    return try make_cells_term(state);
+}
 
-    // SAFETY: initialized by ghostty_render_state_new below
+pub fn nif_render_state(res: TerminalResource) !beam.term {
+    const terminal = res.unpack().terminal;
+    const state = try new_render_state(terminal);
+    defer g.ghostty_render_state_free(state);
+
+    const cells = try make_cells_term(state);
+    const cursor = make_cursor_term(state);
+    const mouse = make_mouse_modes_term(terminal);
+    return beam.make(.{ cells, cursor, mouse }, .{});
+}
+
+pub fn nif_mouse_modes(res: TerminalResource) beam.term {
+    return make_mouse_modes_term(res.unpack().terminal);
+}
+
+fn new_render_state(t: g.GhosttyTerminal) !g.GhosttyRenderState {
     var state: g.GhosttyRenderState = undefined;
     if (g.ghostty_render_state_new(null, &state) != g.GHOSTTY_SUCCESS)
         return error.render_state_failed;
-    defer g.ghostty_render_state_free(state);
+    errdefer g.ghostty_render_state_free(state);
 
     if (g.ghostty_render_state_update(state, t) != g.GHOSTTY_SUCCESS)
         return error.render_update_failed;
 
-    // SAFETY: initialized by ghostty_render_state_row_iterator_new below
+    return state;
+}
+
+fn make_cells_term(state: g.GhosttyRenderState) !beam.term {
     var row_iter: g.GhosttyRenderStateRowIterator = undefined;
     if (g.ghostty_render_state_row_iterator_new(null, &row_iter) != g.GHOSTTY_SUCCESS)
         return error.row_iterator_failed;
@@ -257,7 +272,6 @@ pub fn nif_render_cells(res: TerminalResource) !beam.term {
 
     _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, @ptrCast(&row_iter));
 
-    // SAFETY: initialized by ghostty_render_state_row_cells_new below
     var row_cells: g.GhosttyRenderStateRowCells = undefined;
     if (g.ghostty_render_state_row_cells_new(null, &row_cells) != g.GHOSTTY_SUCCESS)
         return error.row_cells_failed;
@@ -282,7 +296,6 @@ pub fn nif_render_cells(res: TerminalResource) !beam.term {
         while (g.ghostty_render_state_row_cells_next(row_cells)) : (col_idx += 1) {
             if (col_idx >= num_cols) break;
 
-            // Get grapheme
             var grapheme_len: u32 = 0;
             _ = g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &grapheme_len);
 
@@ -301,23 +314,19 @@ pub fn nif_render_cells(res: TerminalResource) !beam.term {
                 char_term = beam.make(utf8_buf[0..utf8_len], .{});
             }
 
-            // Get resolved colors
             var fg_term: beam.term = beam.make(.nil, .{});
             var bg_term: beam.term = beam.make(.nil, .{});
 
-            // SAFETY: initialized by ghostty_render_state_row_cells_get below
             var fg_color: g.GhosttyColorRgb = undefined;
             if (g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fg_color) == g.GHOSTTY_SUCCESS) {
                 fg_term = beam.make(.{ fg_color.r, fg_color.g, fg_color.b }, .{});
             }
 
-            // SAFETY: initialized by ghostty_render_state_row_cells_get below
             var bg_color: g.GhosttyColorRgb = undefined;
             if (g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bg_color) == g.GHOSTTY_SUCCESS) {
                 bg_term = beam.make(.{ bg_color.r, bg_color.g, bg_color.b }, .{});
             }
 
-            // Get style flags
             var style: g.GhosttyStyle = std.mem.zeroes(g.GhosttyStyle);
             style.size = @sizeOf(g.GhosttyStyle);
             _ = g.ghostty_render_state_row_cells_get(row_cells, g.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
@@ -341,6 +350,75 @@ pub fn nif_render_cells(res: TerminalResource) !beam.term {
     }
 
     return beam.make(rows_list[0..row_idx], .{});
+}
+
+fn make_cursor_term(state: g.GhosttyRenderState) beam.term {
+    var visible = false;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &visible);
+
+    var blinking = false;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &blinking);
+
+    var has_position = false;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &has_position);
+
+    var x: u16 = 0;
+    var y: u16 = 0;
+    var wide_tail = false;
+    if (has_position) {
+        _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &x);
+        _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &y);
+        _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_WIDE_TAIL, &wide_tail);
+    }
+
+    var visual_style: c_uint = g.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE, &visual_style);
+
+    const style_term = switch (visual_style) {
+        g.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR => beam.make(.bar, .{}),
+        g.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE => beam.make(.underline, .{}),
+        g.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW => beam.make(.block_hollow, .{}),
+        else => beam.make(.block, .{}),
+    };
+
+    var color_has_value = false;
+    _ = g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_COLOR_CURSOR_HAS_VALUE, &color_has_value);
+
+    var color_term: beam.term = beam.make(.nil, .{});
+    if (color_has_value) {
+        var color: g.GhosttyColorRgb = undefined;
+        if (g.ghostty_render_state_get(state, g.GHOSTTY_RENDER_STATE_DATA_COLOR_CURSOR, &color) == g.GHOSTTY_SUCCESS) {
+            color_term = beam.make(.{ color.r, color.g, color.b }, .{});
+        }
+    }
+
+    return beam.make(.{ has_position, x, y, visible, blinking, style_term, wide_tail, color_term }, .{});
+}
+
+fn make_mouse_modes_term(terminal: g.GhosttyTerminal) beam.term {
+    var tracking = false;
+    _ = g.ghostty_terminal_get(terminal, g.GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &tracking);
+
+    var x10 = false;
+    _ = g.ghostty_terminal_mode_get(terminal, dec_mode(9), &x10);
+
+    var normal = false;
+    _ = g.ghostty_terminal_mode_get(terminal, dec_mode(1000), &normal);
+
+    var button = false;
+    _ = g.ghostty_terminal_mode_get(terminal, dec_mode(1002), &button);
+
+    var any = false;
+    _ = g.ghostty_terminal_mode_get(terminal, dec_mode(1003), &any);
+
+    var sgr = false;
+    _ = g.ghostty_terminal_mode_get(terminal, dec_mode(1006), &sgr);
+
+    return beam.make(.{ tracking, x10, normal, button, any, sgr }, .{});
+}
+
+fn dec_mode(value: u16) g.GhosttyMode {
+    return g.ghostty_mode_new(value, false);
 }
 
 fn eql(a: []const u8, comptime b: []const u8) bool {

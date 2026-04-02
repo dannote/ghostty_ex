@@ -127,6 +127,67 @@ defmodule Ghostty.LiveTerminalTest do
     end
   end
 
+  describe "mouse_event_from_params/1" do
+    test "parses mouse params" do
+      assert %Ghostty.MouseEvent{
+               action: :press,
+               button: :left,
+               x: 15.0,
+               y: 30.0,
+               mods: [:shift]
+             } =
+               LiveTerminal.mouse_event_from_params(%{
+                 "action" => "press",
+                 "button" => "left",
+                 "x" => 15,
+                 "y" => "30.0",
+                 "shiftKey" => true
+               })
+    end
+
+    test "returns :none for invalid mouse params" do
+      assert :none = LiveTerminal.mouse_event_from_params(%{"action" => "drag"})
+    end
+  end
+
+  describe "handle_mouse/2" do
+    test "encodes mouse events when mouse reporting is enabled" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
+      Ghostty.Terminal.write(term, "\e[?1000h\e[?1006h")
+
+      assert {:ok, data} =
+               LiveTerminal.handle_mouse(term, %{
+                 "action" => "press",
+                 "button" => "left",
+                 "x" => 15,
+                 "y" => 30,
+                 "shiftKey" => false,
+                 "ctrlKey" => false,
+                 "altKey" => false,
+                 "metaKey" => false
+               })
+
+      assert String.starts_with?(data, "\e[<")
+    end
+  end
+
+  describe "handle_text/2" do
+    test "writes committed text input to the terminal" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+
+      assert :ok = LiveTerminal.handle_text(term, "hello")
+      assert {:ok, text} = Ghostty.Terminal.snapshot(term)
+      assert text =~ "hello"
+    end
+  end
+
+  describe "handle_focus/1" do
+    test "encodes focus gained and lost events" do
+      assert {:ok, "\e[I"} = LiveTerminal.handle_focus(true)
+      assert {:ok, "\e[O"} = LiveTerminal.handle_focus(false)
+    end
+  end
+
   describe "cells_payload/1" do
     test "returns JSON-safe nested lists" do
       {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
@@ -153,13 +214,45 @@ defmodule Ghostty.LiveTerminalTest do
     end
   end
 
+  describe "cursor_payload/1" do
+    test "returns JSON-safe cursor metadata" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+      Ghostty.Terminal.write(term, "Hi")
+
+      assert %{
+               x: 2,
+               y: 0,
+               visible: true,
+               blinking: false,
+               style: :block,
+               wide_tail: false,
+               color: color
+             } = LiveTerminal.cursor_payload(term)
+
+      assert is_nil(color) or is_list(color)
+    end
+  end
+
+  describe "mouse_payload/1" do
+    test "returns JSON-safe mouse mode metadata" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+      Ghostty.Terminal.write(term, "\e[?1000h\e[?1006h")
+
+      assert %{tracking: true, normal: true, sgr: true} = LiveTerminal.mouse_payload(term)
+    end
+  end
+
   describe "render_payload/2" do
-    test "returns map with id and cells" do
+    test "returns map with id, cells, cursor, and mouse state" do
       {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
       payload = LiveTerminal.render_payload("my-term", term)
 
-      assert %{id: "my-term", cells: cells} = payload
+      assert %{id: "my-term", cells: cells, cursor: cursor, mouse: mouse} = payload
       assert is_list(cells)
+      assert is_map(cursor)
+      assert Map.has_key?(cursor, :style)
+      assert is_map(mouse)
+      assert Map.has_key?(mouse, :tracking)
     end
   end
 end

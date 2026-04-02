@@ -42,14 +42,45 @@ defmodule Ghostty.Terminal do
 
   @type format :: :plain | :html | :vt
 
+  @type rgb :: {byte(), byte(), byte()}
+
   @type cell ::
-          {binary(), {byte(), byte(), byte()} | nil, {byte(), byte(), byte()} | nil, non_neg_integer()}
+          {binary(), rgb() | nil, rgb() | nil, non_neg_integer()}
+
+  @type cursor_style :: :bar | :block | :underline | :block_hollow
+
+  @type cursor_state :: %{
+          x: non_neg_integer() | nil,
+          y: non_neg_integer() | nil,
+          visible: boolean(),
+          blinking: boolean(),
+          style: cursor_style(),
+          wide_tail: boolean(),
+          color: rgb() | nil
+        }
+
+  @type mouse_modes :: %{
+          tracking: boolean(),
+          x10: boolean(),
+          normal: boolean(),
+          button: boolean(),
+          any: boolean(),
+          sgr: boolean()
+        }
+
+  @type render_state :: %{
+          cells: [[cell()]],
+          cursor: cursor_state(),
+          mouse: mouse_modes()
+        }
 
   @type option ::
           {:cols, pos_integer()}
           | {:rows, pos_integer()}
           | {:max_scrollback, non_neg_integer()}
           | {:name, GenServer.name()}
+
+  @unsupported_private_modes ["\e[?1034h", "\e[?1034l"]
 
   defstruct [:ref, :cols, :rows]
 
@@ -101,7 +132,10 @@ defmodule Ghostty.Terminal do
   """
   @spec write(GenServer.server(), iodata()) :: :ok
   def write(terminal, data) do
-    GenServer.call(terminal, {:write, IO.iodata_to_binary(data)})
+    case data |> IO.iodata_to_binary() |> drop_unsupported_private_modes() do
+      "" -> :ok
+      sanitized -> GenServer.call(terminal, {:write, sanitized})
+    end
   end
 
   @doc """
@@ -254,6 +288,36 @@ defmodule Ghostty.Terminal do
     GenServer.call(terminal, :size)
   end
 
+  @doc """
+  Returns the current render-state cursor metadata for the visible viewport.
+  """
+  @spec cursor_state(GenServer.server()) :: cursor_state()
+  def cursor_state(terminal) do
+    terminal
+    |> render_state()
+    |> Map.fetch!(:cursor)
+  end
+
+  @doc """
+  Returns the current visible render-state cells together with cursor metadata.
+  """
+  @spec render_state(GenServer.server()) :: render_state()
+  def render_state(terminal) do
+    terminal
+    |> GenServer.call(:render_state)
+    |> render_state_from_nif()
+  end
+
+  @doc """
+  Returns the current terminal mouse reporting mode state.
+  """
+  @spec mouse_modes(GenServer.server()) :: mouse_modes()
+  def mouse_modes(terminal) do
+    terminal
+    |> render_state()
+    |> Map.fetch!(:mouse)
+  end
+
   # --- GenServer Callbacks ---
 
   @impl true
@@ -329,6 +393,17 @@ defmodule Ghostty.Terminal do
     {:reply, Nif.nif_render_cells(state.ref), state}
   end
 
+  def handle_call(:render_state, _from, state) do
+    render_state =
+      try do
+        Nif.nif_render_state(state.ref)
+      rescue
+        ErlangError -> fallback_render_state(state.ref)
+      end
+
+    {:reply, render_state, state}
+  end
+
   def handle_call({:input_key, event}, _from, state) do
     result =
       Nif.nif_encode_key(
@@ -355,5 +430,66 @@ defmodule Ghostty.Terminal do
       )
 
     {:reply, result, state}
+  end
+
+  defp drop_unsupported_private_modes(data) do
+    Enum.reduce(@unsupported_private_modes, data, &:binary.replace(&2, &1, "", [:global]))
+  end
+
+  defp render_state_from_nif({cells, cursor_tuple, mouse_tuple}) do
+    %{
+      cells: cells,
+      cursor: cursor_state_from_nif(cursor_tuple),
+      mouse: mouse_modes_from_nif(mouse_tuple)
+    }
+  end
+
+  defp render_state_from_nif({cells, cursor_tuple}) do
+    %{
+      cells: cells,
+      cursor: cursor_state_from_nif(cursor_tuple),
+      mouse: default_mouse_modes()
+    }
+  end
+
+  defp fallback_render_state(ref) do
+    {x, y} = Nif.nif_get_cursor(ref)
+
+    {Nif.nif_render_cells(ref), {true, x, y, true, false, :block, false, nil}, fallback_mouse_modes(ref)}
+  end
+
+  defp cursor_state_from_nif({has_position, x, y, visible, blinking, style, wide_tail, color}) do
+    %{
+      x: if(has_position, do: x, else: nil),
+      y: if(has_position, do: y, else: nil),
+      visible: visible,
+      blinking: blinking,
+      style: style,
+      wide_tail: has_position and wide_tail,
+      color: color
+    }
+  end
+
+  defp mouse_modes_from_nif(%{} = mouse_modes), do: mouse_modes
+
+  defp mouse_modes_from_nif({tracking, x10, normal, button, any, sgr}) do
+    %{
+      tracking: tracking,
+      x10: x10,
+      normal: normal,
+      button: button,
+      any: any,
+      sgr: sgr
+    }
+  end
+
+  defp fallback_mouse_modes(ref) do
+    Nif.nif_mouse_modes(ref) |> mouse_modes_from_nif()
+  rescue
+    ErlangError -> default_mouse_modes()
+  end
+
+  defp default_mouse_modes do
+    %{tracking: false, x10: false, normal: false, button: false, any: false, sgr: false}
   end
 end

@@ -94,18 +94,57 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
     @impl true
     def handle_event("key", params, socket) do
       case Ghostty.LiveTerminal.handle_key(socket.assigns.term, params) do
-        {:ok, data} ->
-          if socket.assigns.pty do
-            Ghostty.PTY.write(socket.assigns.pty, data)
-          else
-            Ghostty.Terminal.write(socket.assigns.term, data)
-          end
-
-        :none ->
-          :ok
+        {:ok, data} -> write_data(socket, data)
+        :none -> :ok
       end
 
       {:noreply, push_render(socket)}
+    end
+
+    @impl true
+    def handle_event("text", %{"data" => data}, socket) when is_binary(data) do
+      if data != "" do
+        if socket.assigns.pty do
+          Ghostty.PTY.write(socket.assigns.pty, data)
+        else
+          Ghostty.LiveTerminal.handle_text(socket.assigns.term, data)
+        end
+      end
+
+      {:noreply, push_render(socket)}
+    end
+
+    @impl true
+    def handle_event("mouse", params, socket) do
+      case Ghostty.LiveTerminal.handle_mouse(socket.assigns.term, params) do
+        {:ok, data} -> write_data(socket, data)
+        :none -> :ok
+      end
+
+      {:noreply, socket}
+    end
+
+    @impl true
+    def handle_event("focus", %{"focused" => focused}, socket) do
+      case Ghostty.LiveTerminal.handle_focus(focused) do
+        {:ok, data} -> write_data(socket, data)
+        :none -> :ok
+      end
+
+      {:noreply, push_render(socket)}
+    end
+
+    @impl true
+    def handle_event("refresh", _params, socket) do
+      {:noreply, push_render(socket)}
+    end
+
+    defp write_data(socket, data) do
+      if socket.assigns.pty do
+        Ghostty.PTY.write(socket.assigns.pty, data)
+      else
+        Ghostty.Terminal.write(socket.assigns.term, data)
+      end
     end
 
     defp push_render(socket) do

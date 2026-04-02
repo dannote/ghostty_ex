@@ -32,6 +32,8 @@ defmodule Ghostty.Terminal.Nif do
       nif_encode_key: 6,
       nif_encode_mouse: 6,
       nif_encode_focus: 1,
-      nif_render_cells: 1
+      nif_render_cells: 1,
+      nif_render_state: 1,
+      nif_mouse_modes: 1
     ]
 end

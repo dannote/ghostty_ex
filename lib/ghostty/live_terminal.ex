@@ -92,6 +92,60 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
+    Writes committed browser text input to the terminal.
+
+    This is intended for paste and IME composition commits.
+    """
+    @spec handle_text(GenServer.server(), binary()) :: :ok
+    def handle_text(term, data) when is_binary(data) do
+      Ghostty.Terminal.write(term, data)
+    end
+
+    @doc """
+    Parses browser mouse event params into a `Ghostty.MouseEvent`.
+
+    Returns a `Ghostty.MouseEvent` struct or `:none` for invalid events.
+    """
+    @spec mouse_event_from_params(map()) :: Ghostty.MouseEvent.t() | :none
+    def mouse_event_from_params(%{"action" => action, "x" => x, "y" => y} = params) do
+      with {:ok, mouse_action} <- mouse_action_from_param(action),
+           {:ok, button} <- mouse_button_from_param(Map.get(params, "button")),
+           {:ok, x} <- float_from_param(x),
+           {:ok, y} <- float_from_param(y) do
+        %Ghostty.MouseEvent{
+          action: mouse_action,
+          button: button,
+          mods: mods_from_params(params),
+          x: x,
+          y: y
+        }
+      else
+        _ -> :none
+      end
+    end
+
+    def mouse_event_from_params(_params), do: :none
+
+    @doc """
+    Converts a browser mouse event into an encoded terminal escape sequence.
+    """
+    @spec handle_mouse(GenServer.server(), map()) :: {:ok, binary()} | :none
+    def handle_mouse(term, params) do
+      case mouse_event_from_params(params) do
+        :none -> :none
+        event -> Ghostty.Terminal.input_mouse(term, event)
+      end
+    end
+
+    @doc """
+    Encodes a terminal focus change event.
+    """
+    @spec handle_focus(boolean()) :: {:ok, binary()} | :none
+    def handle_focus(gained?) do
+      Ghostty.Terminal.encode_focus(gained?)
+    end
+
+    @doc """
     Converts terminal cells into a JSON-safe nested list.
 
     Cell tuples `{grapheme, fg, bg, flags}` become `[grapheme, fg, bg, flags]`
@@ -101,11 +155,25 @@ if Code.ensure_loaded?(Phoenix.Component) do
     def cells_payload(term) do
       term
       |> Ghostty.Terminal.cells()
-      |> Enum.map(fn row ->
-        Enum.map(row, fn {char, fg, bg, flags} ->
-          [char, color_to_list(fg), color_to_list(bg), flags]
-        end)
-      end)
+      |> cells_to_payload()
+    end
+
+    @doc """
+    Returns JSON-safe cursor metadata for the visible viewport.
+    """
+    @spec cursor_payload(GenServer.server()) :: map()
+    def cursor_payload(term) do
+      term
+      |> Ghostty.Terminal.cursor_state()
+      |> Map.update!(:color, &color_to_list/1)
+    end
+
+    @doc """
+    Returns JSON-safe mouse reporting mode metadata.
+    """
+    @spec mouse_payload(GenServer.server()) :: map()
+    def mouse_payload(term) do
+      Ghostty.Terminal.mouse_modes(term)
     end
 
     @doc """
@@ -116,7 +184,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     """
     @spec render_payload(String.t(), GenServer.server()) :: map()
     def render_payload(id, term) do
-      %{id: id, cells: cells_payload(term)}
+      %{cells: cells, cursor: cursor, mouse: mouse} = Ghostty.Terminal.render_state(term)
+      %{id: id, cells: cells_to_payload(cells), cursor: cursor |> Map.update!(:color, &color_to_list/1), mouse: mouse}
     end
 
     @doc """
@@ -140,6 +209,14 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     defp color_to_list(nil), do: nil
     defp color_to_list({r, g, b}), do: [r, g, b]
+
+    defp cells_to_payload(cells) do
+      Enum.map(cells, fn row ->
+        Enum.map(row, fn {char, fg, bg, flags} ->
+          [char, color_to_list(fg), color_to_list(bg), flags]
+        end)
+      end)
+    end
 
     defp js_key_to_atom(key) when byte_size(key) == 1 do
       cond do
@@ -183,5 +260,30 @@ if Code.ensure_loaded?(Phoenix.Component) do
     }
 
     defp special_key(key), do: Map.get(@special_keys, key, :unidentified)
+
+    defp mouse_action_from_param("press"), do: {:ok, :press}
+    defp mouse_action_from_param("release"), do: {:ok, :release}
+    defp mouse_action_from_param("motion"), do: {:ok, :motion}
+    defp mouse_action_from_param(_action), do: :error
+
+    defp mouse_button_from_param(nil), do: {:ok, nil}
+    defp mouse_button_from_param("left"), do: {:ok, :left}
+    defp mouse_button_from_param("right"), do: {:ok, :right}
+    defp mouse_button_from_param("middle"), do: {:ok, :middle}
+    defp mouse_button_from_param("four"), do: {:ok, :four}
+    defp mouse_button_from_param("five"), do: {:ok, :five}
+    defp mouse_button_from_param(_button), do: :error
+
+    defp float_from_param(value) when is_float(value), do: {:ok, value}
+    defp float_from_param(value) when is_integer(value), do: {:ok, value / 1}
+
+    defp float_from_param(value) when is_binary(value) do
+      case Float.parse(value) do
+        {parsed, ""} -> {:ok, parsed}
+        _ -> :error
+      end
+    end
+
+    defp float_from_param(_value), do: :error
   end
 end

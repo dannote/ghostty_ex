@@ -16,6 +16,16 @@ config :esbuild,
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
 
+config :tailwind,
+  version: "4.1.10",
+  live_terminal: [
+    args: ~w(
+      --input=assets/css/app.css
+      --output=priv/static/assets/app.css
+    ),
+    cd: Path.expand("..", __DIR__)
+  ]
+
 config :logger, :console, format: "$time $metadata[$level] $message\n"
 config :phoenix, :json_library, Jason
 

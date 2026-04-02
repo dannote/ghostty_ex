@@ -54,3 +54,42 @@ jobs:
       - run: mix credo --strict
       - run: mix ex_dna
       - run: GHOSTTY_BUILD=1 mix test
+
+  example-live-terminal:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install example assets deps
+        working-directory: examples/live_terminal/assets
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        working-directory: examples/live_terminal/assets
+        run: bunx playwright install --with-deps chromium
+
+      - name: Install example app deps
+        working-directory: examples/live_terminal
+        run: mix deps.get
+
+      - name: Install Tailwind and esbuild
+        working-directory: examples/live_terminal
+        run: mix setup
+
+      - name: Build example assets
+        working-directory: examples/live_terminal
+        run: mix assets.build
+
+      - name: Run browser feature test
+        working-directory: examples/live_terminal
+        run: mix test test/features/terminal_test.exs

@@ -65,6 +65,17 @@ defmodule Ghostty.TerminalTest do
       assert :ok = Terminal.write(term, ["hello", ?\s, "world"])
       GenServer.stop(term)
     end
+
+    test "ignores unsupported DEC mode 1034 sequences" do
+      {:ok, term} = Terminal.start_link(cols: 40, rows: 5)
+
+      assert :ok = Terminal.write(term, ["hello", "\e[?1034h", " world", "\e[?1034l", "!\r\n"])
+
+      {:ok, text} = Terminal.snapshot(term)
+      assert text =~ "hello world!"
+
+      GenServer.stop(term)
+    end
   end
 
   describe "snapshot/2" do
@@ -158,6 +169,34 @@ defmodule Ghostty.TerminalTest do
       Terminal.write(term, "Line 1\r\nLine 2\r\n")
       {_col, row} = Terminal.cursor(term)
       assert row == 2
+      GenServer.stop(term)
+    end
+  end
+
+  describe "render_state/1" do
+    test "returns visible cells, cursor metadata, and mouse modes atomically" do
+      {:ok, term} = Terminal.start_link(cols: 10, rows: 2)
+      Terminal.write(term, "Hi")
+      Terminal.write(term, "\e[?1000h\e[?1006h")
+
+      assert %{
+               cells: [[{"H", _, _, _}, {"i", _, _, _} | _] | _],
+               cursor: %{
+                 x: 2,
+                 y: 0,
+                 visible: true,
+                 blinking: false,
+                 style: :block,
+                 wide_tail: false,
+                 color: nil
+               },
+               mouse: %{
+                 tracking: true,
+                 normal: true,
+                 sgr: true
+               }
+             } = Terminal.render_state(term)
+
       GenServer.stop(term)
     end
   end
