@@ -84,6 +84,13 @@ defmodule LiveTerminalWeb.TerminalLive do
     {:noreply, socket}
   end
 
+  def handle_info({:pty_write, data}, socket) do
+    Ghostty.PTY.write(socket.assigns.pty, data)
+    {:noreply, socket}
+  end
+
+  def handle_info(:bell, socket), do: {:noreply, socket}
+
   def handle_info({:exit, _status}, socket), do: {:noreply, socket}
 
   def handle_info(:refresh_terminal, socket) do

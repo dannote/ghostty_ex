@@ -82,7 +82,7 @@ defmodule Ghostty.Terminal do
 
   @unsupported_private_modes ["\e[?1034h", "\e[?1034l"]
 
-  defstruct [:ref, :cols, :rows]
+  defstruct [:ref, :cols, :rows, :mouse_modes]
 
   @doc """
   Starts a terminal process linked to the caller.
@@ -333,7 +333,7 @@ defmodule Ghostty.Terminal do
     ref = Nif.nif_new(cols, rows, max_scrollback)
     Nif.nif_set_effect_pid(ref, Keyword.fetch!(opts, :owner))
 
-    {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows}}
+    {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows, mouse_modes: default_mouse_modes()}}
   rescue
     e in ErlangError ->
       {:stop, {:nif_not_loaded, Exception.message(e)}}
@@ -358,7 +358,7 @@ defmodule Ghostty.Terminal do
   @impl true
   def handle_call({:write, data}, _from, state) do
     Nif.nif_vt_write(state.ref, data)
-    {:reply, :ok, state}
+    {:reply, :ok, %{state | mouse_modes: update_mouse_modes(state.mouse_modes, data)}}
   end
 
   def handle_call({:resize, cols, rows}, _from, state) do
@@ -368,7 +368,7 @@ defmodule Ghostty.Terminal do
 
   def handle_call(:reset, _from, state) do
     Nif.nif_reset(state.ref)
-    {:reply, :ok, state}
+    {:reply, :ok, %{state | mouse_modes: default_mouse_modes()}}
   end
 
   def handle_call({:snapshot, format}, _from, state) do
@@ -401,7 +401,7 @@ defmodule Ghostty.Terminal do
         ErlangError -> fallback_render_state(state.ref)
       end
 
-    {:reply, render_state, state}
+    {:reply, {render_state, state.mouse_modes}, state}
   end
 
   def handle_call({:input_key, event}, _from, state) do
@@ -436,20 +436,18 @@ defmodule Ghostty.Terminal do
     Enum.reduce(@unsupported_private_modes, data, &:binary.replace(&2, &1, "", [:global]))
   end
 
-  defp render_state_from_nif({cells, cursor_tuple, mouse_tuple}) do
-    %{
-      cells: cells,
-      cursor: cursor_state_from_nif(cursor_tuple),
-      mouse: mouse_modes_from_nif(mouse_tuple)
-    }
+  defp render_state_from_nif({raw_render_state, mouse_modes}) do
+    raw_render_state
+    |> render_state_from_nif_raw()
+    |> Map.put(:mouse, mouse_modes_from_nif(mouse_modes))
   end
 
-  defp render_state_from_nif({cells, cursor_tuple}) do
-    %{
-      cells: cells,
-      cursor: cursor_state_from_nif(cursor_tuple),
-      mouse: default_mouse_modes()
-    }
+  defp render_state_from_nif_raw({cells, cursor_tuple, _mouse_tuple}) do
+    %{cells: cells, cursor: cursor_state_from_nif(cursor_tuple)}
+  end
+
+  defp render_state_from_nif_raw({cells, cursor_tuple}) do
+    %{cells: cells, cursor: cursor_state_from_nif(cursor_tuple)}
   end
 
   defp fallback_render_state(ref) do
@@ -491,5 +489,31 @@ defmodule Ghostty.Terminal do
 
   defp default_mouse_modes do
     %{tracking: false, x10: false, normal: false, button: false, any: false, sgr: false}
+  end
+
+  defp update_mouse_modes(mouse_modes, data) do
+    mouse_modes =
+      if String.contains?(data, "\ec") do
+        default_mouse_modes()
+      else
+        mouse_modes
+      end
+
+    Regex.scan(~r/\e\[\?(9|1000|1002|1003|1006)(h|l)/, data)
+    |> Enum.reduce(mouse_modes, fn [_, mode, value], acc ->
+      enabled? = value == "h"
+
+      case mode do
+        "9" -> %{acc | x10: enabled?} |> normalize_mouse_modes()
+        "1000" -> %{acc | normal: enabled?} |> normalize_mouse_modes()
+        "1002" -> %{acc | button: enabled?} |> normalize_mouse_modes()
+        "1003" -> %{acc | any: enabled?} |> normalize_mouse_modes()
+        "1006" -> %{acc | sgr: enabled?} |> normalize_mouse_modes()
+      end
+    end)
+  end
+
+  defp normalize_mouse_modes(mouse_modes) do
+    %{mouse_modes | tracking: mouse_modes.x10 or mouse_modes.normal or mouse_modes.button or mouse_modes.any}
   end
 end

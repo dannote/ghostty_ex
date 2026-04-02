@@ -38,6 +38,7 @@ export const GhosttyTerminal = {
 
     this.selectionLayer = document.createElement("div")
     this.selectionLayer.setAttribute("aria-hidden", "true")
+    this.selectionLayer.setAttribute("data-ghostty-selection-layer", "true")
     this.selectionLayer.style.position = "absolute"
     this.selectionLayer.style.inset = "0"
     this.selectionLayer.style.pointerEvents = "none"

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### LiveView
+
+- Add render-state mouse mode metadata so the browser hook can detect active terminal mouse reporting
+- Upgrade `priv/static/ghostty.js` with a real cursor overlay, hidden textarea input, IME/paste support, focus reporting, local selection rendering, and mouse forwarding
+- Automatically disable the local selection overlay whenever terminal mouse reporting is active
+- Cover the richer Live terminal behavior with Elixir and browser-level tests
+
+### Examples
+
+- Polish `examples/live_terminal/` into a fuller terminal demo with Tailwind styling and browser coverage in CI
+- Add a browser regression test that verifies local selection stays disabled while mouse reporting is enabled
+
 ## 0.2.4 (2026-04-02)
 
 ### LiveView
