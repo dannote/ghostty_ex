@@ -55,6 +55,7 @@ defmodule Ghostty.MixProject do
   defp compile_with_ghostty_priv(args) do
     sync_build_priv_if_needed()
     Mix.Tasks.Compile.run(args)
+    bundle_typescript()
   end
 
   defp sync_build_priv_if_needed do
@@ -109,6 +110,12 @@ defmodule Ghostty.MixProject do
     end
   end
 
+  defp bundle_typescript do
+    if Code.ensure_loaded?(OXC) do
+      Mix.Compilers.GhosttyJS.run([])
+    end
+  end
+
   defp deps do
     [
       {:zigler_precompiled, "~> 0.1.2"},
@@ -118,6 +125,7 @@ defmodule Ghostty.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.1", only: [:dev, :test], runtime: false},
       {:ex_slop, "~> 0.2", only: [:dev, :test], runtime: false},
+      {:oxc, "~> 0.5"},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false}
     ]
   end
@@ -141,7 +149,7 @@ defmodule Ghostty.MixProject do
         lib/ghostty/mods.ex
         lib/ghostty.ex
         lib/mix
-        priv/static/ghostty.js
+        priv/ts
         examples/*.exs
         mix.exs README.md LICENSE CHANGELOG.md .formatter.exs
         checksum-Ghostty.Terminal.Nif.exs

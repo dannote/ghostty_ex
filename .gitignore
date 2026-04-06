@@ -14,3 +14,4 @@ output.html
 lib/ghostty/terminal/.Elixir.Ghostty.Terminal.Nif.zig
 lib/ghostty/.Elixir.Ghostty.PTY.Nif.zig
 /node_modules
+priv/static/ghostty.js
