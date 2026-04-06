@@ -123,7 +123,7 @@ const GhosttyTerminal = {
       this.cursorBlinkVisible = true
       this.syncCursorBlink()
       this.renderCursor()
-      this.focusInput()
+      this.focusInput(true)
     }
     this.onContainerBlur = () => {
       window.setTimeout(() => {
@@ -285,7 +285,6 @@ const GhosttyTerminal = {
       this.pushEventTo(this.target, "refresh", {})
     }
 
-    this.focusInput()
     window.addEventListener("pageshow", this.onWindowResize)
     window.requestAnimationFrame(() => this.sendReady())
     window.setTimeout(() => this.sendReady(), 50)
@@ -436,7 +435,7 @@ const GhosttyTerminal = {
       return
     }
 
-    this.focusInput()
+    this.focusInput(true)
 
     if (!this.mouseModeActive() && e.button === 0 && !this.hasMouseModifiers(e)) {
       this.selecting = true
@@ -474,12 +473,12 @@ const GhosttyTerminal = {
       this.selecting = false
       if (this.selectionCollapsed()) {
         this.clearSelection()
-        this.focusInput()
+        this.focusInput(true)
       } else {
         this.renderSelection()
       }
     } else if (!this.hasSelection()) {
-      this.focusInput()
+      this.focusInput(true)
     }
 
     if (point) {
@@ -721,7 +720,11 @@ const GhosttyTerminal = {
     }
   },
 
-  focusInput() {
+  focusInput(force = false) {
+    if (!force && !this.shouldAutofocus()) {
+      return
+    }
+
     if (document.activeElement !== this.el) {
       this.el.focus({ preventScroll: true })
     }
@@ -729,6 +732,20 @@ const GhosttyTerminal = {
     if (document.activeElement !== this.input) {
       this.input.focus({ preventScroll: true })
     }
+  },
+
+  shouldAutofocus() {
+    const active = document.activeElement
+
+    if (!active || active === document.body || active === document.documentElement) {
+      return true
+    }
+
+    return this.isInsideTerminal(active)
+  },
+
+  isInsideTerminal(node) {
+    return Boolean(node && (node === this.el || node === this.input || this.el.contains(node)))
   },
 
   scheduleAutofocus() {
@@ -746,6 +763,11 @@ const GhosttyTerminal = {
     for (const delay of [0, 50, 150, 300, 600, 1000]) {
       const timer = window.setTimeout(() => {
         if (!this.el.isConnected || document.activeElement === this.input) {
+          return
+        }
+
+        if (!this.shouldAutofocus()) {
+          this.stopAutofocus()
           return
         }
 

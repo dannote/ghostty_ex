@@ -4,8 +4,8 @@ defmodule LiveTerminalWeb.TerminalLive do
   @default_fit true
   @startup_timeout 1_250
   @term_env "TERM=xterm-256color"
+  @color_term_env "COLORTERM=truecolor"
   @shell_env "BASH_SILENCE_DEPRECATION_WARNING=1"
-  @prompt "ghostty$ "
 
   @impl true
   def mount(params, _session, socket) do
@@ -66,12 +66,12 @@ defmodule LiveTerminalWeb.TerminalLive do
             </div>
 
             <div class="font-mono text-sm font-medium text-slate-400">
-              bash --noprofile --norc -i
+              bash --noprofile --rcfile demo.bashrc -i
             </div>
           </div>
 
           <div class="terminal-controls-wrap">
-            <form id="demo-controls" phx-change="controls_changed" phx-submit="restart_terminal" class="terminal-controls">
+            <form id="demo-controls" phx-submit="restart_terminal" class="terminal-controls">
               <label class="terminal-field terminal-field-command" for="startup-command">
                 <span class="terminal-field-label">Startup command</span>
                 <input
@@ -175,10 +175,6 @@ defmodule LiveTerminalWeb.TerminalLive do
   end
 
   @impl true
-  def handle_event("controls_changed", params, socket) do
-    {:noreply, assign_control_inputs(socket, params)}
-  end
-
   def handle_event("restart_terminal", params, socket) do
     socket =
       socket
@@ -362,23 +358,24 @@ defmodule LiveTerminalWeb.TerminalLive do
   defp start_command, do: "/usr/bin/env"
 
   defp interactive_start_args do
-    [@term_env, @shell_env, "PS1=#{@prompt}", "/bin/bash" | bash_args()]
+    [@term_env, @color_term_env, @shell_env, "/bin/bash" | bash_args()]
   end
 
   defp command_start_args(command) do
+    rcfile = shell_escape(demo_rcfile())
+
     [
       @term_env,
+      @color_term_env,
       @shell_env,
       "/bin/bash",
       "--noprofile",
-      "--norc",
       "-lc",
-      command <>
-        "; exec /usr/bin/env #{@term_env} #{@shell_env} PS1='#{@prompt}' /bin/bash --noprofile --norc -i"
+      "source #{rcfile}; #{command}; exec /usr/bin/env #{@term_env} #{@color_term_env} #{@shell_env} /bin/bash --noprofile --rcfile #{rcfile} -i"
     ]
   end
 
-  defp bash_args, do: ["--noprofile", "--norc", "-i"]
+  defp bash_args, do: ["--noprofile", "--rcfile", demo_rcfile(), "-i"]
 
   defp append_boot_output(socket, data) do
     assign(socket, :boot_output, trim_boot_output(socket.assigns.boot_output <> data))
@@ -454,6 +451,10 @@ defmodule LiveTerminalWeb.TerminalLive do
   end
 
   defp term_env, do: @term_env
+
+  defp demo_rcfile, do: Application.app_dir(:live_terminal, "priv/demo.bashrc")
+
+  defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\"'\"'") <> "'"
 
   defp hello_demo_command, do: "echo hello"
 

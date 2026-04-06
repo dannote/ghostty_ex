@@ -48,6 +48,22 @@ defmodule Features.TerminalTest do
     conn
     |> visit("/")
     |> assert_has("#demo-controls")
+    |> evaluate(
+      ~S"""
+      (() => new Promise((resolve) => {
+        const input = document.getElementById("startup-command")
+        input?.focus()
+
+        setTimeout(() => {
+          resolve({activeId: document.activeElement?.id ?? null})
+        }, 400)
+      }))()
+      """,
+      [timeout: 2_000],
+      fn result ->
+        assert result["activeId"] == "startup-command"
+      end
+    )
     |> PhoenixTest.fill_in("#startup-command", "Startup command",
       with:
         "printf '\\033[31mred\\033[0m \\033[32mgreen\\033[0m \\033[34mblue\\033[0m\\n\\033[?1000h\\033[?1006h'; echo hello"
