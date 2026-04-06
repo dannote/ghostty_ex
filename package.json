@@ -1,0 +1,14 @@
+{
+  "devDependencies": {
+    "oxfmt": "^0.37.0",
+    "oxlint": "^1.52.0"
+  },
+  "private": true,
+  "scripts": {
+    "format": "oxfmt --write priv/ts/",
+    "format:check": "oxfmt --check priv/ts/",
+    "lint": "oxlint -c oxlint.json priv/ts/",
+    "build": "bun build priv/ts/hook.ts --outfile priv/static/ghostty.js --format esm --target browser"
+  },
+  "type": "module"
+}
