@@ -1,6 +1,8 @@
 defmodule LiveTerminalWeb.TerminalLive do
   use Phoenix.LiveView
 
+  @startup_timeout 1_250
+
   @impl true
   def mount(params, _session, socket) do
     socket =
@@ -8,7 +10,12 @@ defmodule LiveTerminalWeb.TerminalLive do
         term: nil,
         pty: nil,
         banner?: !!params["banner"],
-        command: params["cmd"]
+        command: params["cmd"],
+        boot_output: "",
+        pty_restart_attempts: 0,
+        shell_prompt_seen?: false,
+        startup_ref: nil,
+        fit?: Map.get(params, "fit", "1") != "0"
       )
 
     if connected?(socket) do
@@ -59,6 +66,8 @@ defmodule LiveTerminalWeb.TerminalLive do
                 id="term"
                 term={@term}
                 pty={@pty}
+                fit={@fit?}
+                autofocus={true}
                 class="live-terminal-shell"
               />
             <% else %>
@@ -77,25 +86,55 @@ defmodule LiveTerminalWeb.TerminalLive do
   end
 
   @impl true
+  def handle_info({:ghostty_terminal_ready, "term", cols, rows}, %{assigns: %{pty: nil}} = socket) do
+    {:noreply, start_pty_session(socket, cols, rows)}
+  end
+
+  def handle_info({:ghostty_terminal_ready, _id, _cols, _rows}, socket), do: {:noreply, socket}
+
   def handle_info({:data, data}, socket) do
     Ghostty.Terminal.write(socket.assigns.term, data)
+
+    socket =
+      socket
+      |> append_boot_output(data)
+      |> maybe_mark_shell_prompt()
+
     refresh_terminal()
-    Process.send_after(self(), :refresh_terminal, 25)
     {:noreply, socket}
   end
 
-  def handle_info({:pty_write, data}, socket) do
-    Ghostty.PTY.write(socket.assigns.pty, data)
+  def handle_info({:pty_write, data}, %{assigns: %{pty: pty}} = socket) when not is_nil(pty) do
+    Ghostty.PTY.write(pty, data)
     {:noreply, socket}
   end
+
+  def handle_info({:pty_write, _data}, socket), do: {:noreply, socket}
+
+  def handle_info(
+        {:startup_timeout, startup_ref},
+        %{assigns: %{startup_ref: startup_ref, shell_prompt_seen?: true}} = socket
+      ),
+      do: {:noreply, socket}
+
+  def handle_info(
+        {:startup_timeout, startup_ref},
+        %{assigns: %{startup_ref: startup_ref, pty_restart_attempts: attempts}} = socket
+      )
+      when attempts >= 1 do
+    {:noreply, socket}
+  end
+
+  def handle_info({:startup_timeout, startup_ref}, %{assigns: %{startup_ref: startup_ref}} = socket) do
+    {:noreply, restart_pty(socket)}
+  end
+
+  def handle_info({:startup_timeout, _startup_ref}, socket), do: {:noreply, socket}
 
   def handle_info(:bell, socket), do: {:noreply, socket}
 
-  def handle_info({:exit, _status}, socket), do: {:noreply, socket}
-
-  def handle_info(:refresh_terminal, socket) do
-    refresh_terminal()
-    {:noreply, socket}
+  def handle_info({:exit, _status}, socket) do
+    {:noreply, assign(socket, pty: nil)}
   end
 
   @impl true
@@ -112,26 +151,118 @@ defmodule LiveTerminalWeb.TerminalLive do
   defp start_terminal(socket) do
     {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
 
-    {:ok, pty} =
-      Ghostty.PTY.start_link(
-        cmd: "/bin/bash",
-        args: bash_args(socket.assigns.command),
-        cols: 80,
-        rows: 24
-      )
-
-    if socket.assigns.banner? do
-      colored = IO.ANSI.green() <> "Welcome to Ghostty!" <> IO.ANSI.reset() <> "\r\n"
-      Ghostty.Terminal.write(term, colored)
-    end
-
-    assign(socket, term: term, pty: pty)
+    socket
+    |> assign(term: term, pty: nil)
+    |> write_banner()
   end
 
-  defp bash_args(nil), do: ["--noprofile", "--norc", "-i"]
+  defp start_pty_session(socket, cols, rows) do
+    Ghostty.Terminal.resize(socket.assigns.term, cols, rows)
+    {:ok, pty} = start_pty(socket.assigns.command, cols, rows)
 
-  defp bash_args(command) do
-    ["-lc", command <> "; exec /bin/bash --noprofile --norc -i"]
+    startup_ref = make_ref()
+    Process.send_after(self(), {:startup_timeout, startup_ref}, @startup_timeout)
+
+    assign(socket,
+      pty: pty,
+      boot_output: "",
+      shell_prompt_seen?: false,
+      startup_ref: startup_ref
+    )
+  end
+
+  defp start_command, do: "/usr/bin/env"
+
+  defp interactive_start_args do
+    [
+      "BASH_SILENCE_DEPRECATION_WARNING=1",
+      "PS1=ghostty$ ",
+      "/bin/bash"
+      | bash_args()
+    ]
+  end
+
+  defp command_start_args(command) do
+    [
+      "BASH_SILENCE_DEPRECATION_WARNING=1",
+      "/bin/bash",
+      "--noprofile",
+      "--norc",
+      "-lc",
+      command <>
+        "; exec /usr/bin/env BASH_SILENCE_DEPRECATION_WARNING=1 PS1='ghostty$ ' /bin/bash --noprofile --norc -i"
+    ]
+  end
+
+  defp bash_args, do: ["--noprofile", "--norc", "-i"]
+
+  defp append_boot_output(socket, data) do
+    assign(socket, :boot_output, trim_boot_output(socket.assigns.boot_output <> data))
+  end
+
+  defp maybe_mark_shell_prompt(%{assigns: %{shell_prompt_seen?: true}} = socket), do: socket
+
+  defp maybe_mark_shell_prompt(socket) do
+    if prompt_seen?(socket.assigns.boot_output) do
+      assign(socket, shell_prompt_seen?: true)
+    else
+      socket
+    end
+  end
+
+  defp prompt_seen?(data) do
+    String.match?(data, ~r/(^|\r?\n).*(ghostty\$ |[#$] )$/m)
+  end
+
+  defp trim_boot_output(data) do
+    data
+    |> String.slice(-512, 512)
+    |> Kernel.||("")
+  end
+
+  defp restart_pty(socket) do
+    Ghostty.Terminal.reset(socket.assigns.term)
+
+    if socket.assigns.pty do
+      Ghostty.PTY.close(socket.assigns.pty)
+    end
+
+    socket =
+      socket
+      |> assign(pty: nil, pty_restart_attempts: socket.assigns.pty_restart_attempts + 1)
+      |> write_banner()
+
+    refresh_terminal()
+
+    {cols, rows} = Ghostty.Terminal.size(socket.assigns.term)
+    start_pty_session(socket, cols, rows)
+  end
+
+  defp start_pty(nil, cols, rows) do
+    Ghostty.PTY.start_link(
+      cmd: start_command(),
+      args: interactive_start_args(),
+      cols: cols,
+      rows: rows
+    )
+  end
+
+  defp start_pty(command, cols, rows) do
+    Ghostty.PTY.start_link(
+      cmd: start_command(),
+      args: command_start_args(command),
+      cols: cols,
+      rows: rows
+    )
+  end
+
+  defp write_banner(socket) do
+    if socket.assigns.banner? do
+      colored = IO.ANSI.green() <> "Welcome to Ghostty!" <> IO.ANSI.reset() <> "\r\n"
+      Ghostty.Terminal.write(socket.assigns.term, colored)
+    end
+
+    socket
   end
 
   defp refresh_terminal do

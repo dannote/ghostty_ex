@@ -36,6 +36,8 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
       * `:pty` — optional, a `Ghostty.PTY` pid; key input is written here when present
       * `:cols` — terminal width (default: `80`)
       * `:rows` — terminal height (default: `24`)
+      * `:fit` — auto-fit terminal size to the rendered container (default: `false`)
+      * `:autofocus` — focus the hidden terminal input on mount (default: `false`)
       * `:class` — CSS class for the container div (default: `""`)
 
     Global HTML attributes (`data-*`, `aria-*`, etc.) are passed through.
@@ -63,6 +65,8 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         |> assign_new(:pty, fn -> nil end)
         |> assign_new(:cols, fn -> 80 end)
         |> assign_new(:rows, fn -> 24 end)
+        |> assign_new(:fit, fn -> false end)
+        |> assign_new(:autofocus, fn -> false end)
         |> assign_new(:class, fn -> "" end)
 
       socket =
@@ -82,11 +86,15 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         id={@id}
         class={@class}
         phx-hook="GhosttyTerminal"
+        phx-update="ignore"
         phx-target={@myself}
         data-cols={@cols}
         data-rows={@rows}
+        data-fit={to_string(@fit)}
+        data-autofocus={to_string(@autofocus)}
         style="font-family: monospace; line-height: 1.2;"
       >
+        <textarea data-ghostty-input="true" autofocus={@autofocus} aria-label="Terminal input"></textarea>
       </div>
       """
     end
@@ -125,10 +133,39 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
     end
 
     @impl true
+    def handle_event("ready", %{"cols" => cols, "rows" => rows}, socket) do
+      cols = parse_dimension!(cols)
+      rows = parse_dimension!(rows)
+
+      Ghostty.Terminal.resize(socket.assigns.term, cols, rows)
+      send(self(), {:ghostty_terminal_ready, socket.assigns.id, cols, rows})
+
+      {:noreply,
+       socket
+       |> assign(cols: cols, rows: rows)
+       |> push_render()}
+    end
+
+    @impl true
+    def handle_event("resize", %{"cols" => cols, "rows" => rows}, socket) do
+      cols = parse_dimension!(cols)
+      rows = parse_dimension!(rows)
+
+      Ghostty.LiveTerminal.handle_resize(socket.assigns.term, cols, rows, socket.assigns.pty)
+
+      {:noreply,
+       socket
+       |> assign(cols: cols, rows: rows)
+       |> push_render()}
+    end
+
+    @impl true
     def handle_event("focus", %{"focused" => focused}, socket) do
-      case Ghostty.LiveTerminal.handle_focus(focused) do
-        {:ok, data} -> write_data(socket, data)
-        :none -> :ok
+      if socket.assigns.pty do
+        case Ghostty.LiveTerminal.handle_focus(focused) do
+          {:ok, data} -> Ghostty.PTY.write(socket.assigns.pty, data)
+          :none -> :ok
+        end
       end
 
       {:noreply, push_render(socket)}
@@ -149,6 +186,15 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
 
     defp push_render(socket) do
       Ghostty.LiveTerminal.push_render(socket, socket.assigns.id, socket.assigns.term)
+    end
+
+    defp parse_dimension!(value) when is_integer(value) and value > 0, do: value
+
+    defp parse_dimension!(value) when is_binary(value) do
+      case Integer.parse(value) do
+        {parsed, ""} when parsed > 0 -> parsed
+        _ -> raise ArgumentError, "invalid terminal dimension: #{inspect(value)}"
+      end
     end
   end
 end

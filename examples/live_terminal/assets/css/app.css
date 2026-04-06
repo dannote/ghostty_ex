@@ -54,7 +54,7 @@
   }
 
   .live-terminal-shell {
-    @apply min-h-[420px] bg-transparent outline-none;
+    @apply min-h-[420px] w-full bg-transparent outline-none;
   }
 
   .live-terminal-shell pre {

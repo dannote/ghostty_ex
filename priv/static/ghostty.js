@@ -1,7 +1,9 @@
-export const GhosttyTerminal = {
+const GhosttyTerminal = {
   mounted() {
     this.cols = parseInt(this.el.dataset.cols)
     this.rows = parseInt(this.el.dataset.rows)
+    this.fit = this.el.dataset.fit === "true"
+    this.autofocus = this.el.dataset.autofocus === "true"
     this.rowsData = []
     this.cursor = null
     this.mouse = { tracking: false, x10: false, normal: false, button: false, any: false, sgr: false }
@@ -10,18 +12,32 @@ export const GhosttyTerminal = {
     this.cursorBlinkVisible = true
     this.cursorBlinkTimer = null
     this.target = this.el.getAttribute("phx-target")
+    this.resizeObserver = null
+    this.pendingFitTimer = null
+    this.lastFitCols = null
+    this.lastFitRows = null
     this.selectionAnchor = null
     this.selectionFocus = null
     this.selecting = false
+    this.autofocusTimers = []
+    this.readySent = false
 
-    this.el.innerHTML = ""
     this.el.tabIndex = 0
     this.el.style.position = "relative"
     this.el.style.outline = "none"
 
+    this.input = this.el.querySelector("textarea[data-ghostty-input='true']") || document.createElement("textarea")
+
+    for (const child of Array.from(this.el.children)) {
+      if (child !== this.input) {
+        child.remove()
+      }
+    }
+
     this.screen = document.createElement("div")
     this.screen.style.position = "relative"
-    this.screen.style.display = "inline-block"
+    this.screen.style.display = "block"
+    this.screen.style.width = "100%"
     this.el.appendChild(this.screen)
 
     this.pre = document.createElement("pre")
@@ -31,6 +47,8 @@ export const GhosttyTerminal = {
     this.pre.style.color = "#cdd6f4"
     this.pre.style.overflow = "hidden"
     this.pre.style.position = "relative"
+    this.pre.style.width = "100%"
+    this.pre.style.boxSizing = "border-box"
     this.pre.style.userSelect = "none"
     this.pre.style.webkitUserSelect = "none"
     this.pre.style.cursor = "text"
@@ -56,7 +74,7 @@ export const GhosttyTerminal = {
     this.measure.style.lineHeight = "inherit"
     this.screen.appendChild(this.measure)
 
-    this.input = document.createElement("textarea")
+    this.input.setAttribute("data-ghostty-input", "true")
     this.input.setAttribute("aria-label", "Terminal input")
     this.input.setAttribute("autocapitalize", "off")
     this.input.setAttribute("autocomplete", "off")
@@ -78,7 +96,8 @@ export const GhosttyTerminal = {
     this.input.style.color = "transparent"
     this.input.style.caretColor = "transparent"
     this.input.style.whiteSpace = "pre"
-    this.input.style.zIndex = "-1"
+    this.input.style.pointerEvents = "none"
+    this.input.style.zIndex = "2"
     this.screen.appendChild(this.input)
 
     this.cursorEl = document.createElement("div")
@@ -99,7 +118,23 @@ export const GhosttyTerminal = {
     this.cursorEl.appendChild(this.cursorText)
     this.screen.appendChild(this.cursorEl)
 
-    this.onContainerFocus = () => this.focusInput()
+    this.onContainerFocus = () => {
+      this.focused = true
+      this.cursorBlinkVisible = true
+      this.syncCursorBlink()
+      this.renderCursor()
+      this.focusInput()
+    }
+    this.onContainerBlur = () => {
+      window.setTimeout(() => {
+        if (document.activeElement !== this.el && document.activeElement !== this.input) {
+          this.focused = false
+          this.cursorBlinkVisible = true
+          this.syncCursorBlink()
+          this.renderCursor()
+        }
+      }, 0)
+    }
     this.onPointerDown = (e) => this.handlePointerDown(e)
     this.onPointerMove = (e) => this.handlePointerMove(e)
     this.onPointerUp = (e) => this.handlePointerUp(e)
@@ -109,11 +144,17 @@ export const GhosttyTerminal = {
       }
     }
     this.onWindowResize = () => {
+      this.scheduleFit()
       this.renderSelection()
       this.renderCursor()
+      this.scheduleAutofocus()
     }
 
     this.onKeydown = (e) => {
+      if (e.currentTarget === this.el && document.activeElement === this.input) {
+        return
+      }
+
       if (this.composing) {
         return
       }
@@ -140,6 +181,10 @@ export const GhosttyTerminal = {
     }
 
     this.onPaste = (e) => {
+      if (e.currentTarget === this.el && document.activeElement === this.input) {
+        return
+      }
+
       const text = e.clipboardData?.getData("text") || ""
       if (text === "") {
         return
@@ -152,6 +197,10 @@ export const GhosttyTerminal = {
     }
 
     this.onCopy = (e) => {
+      if (e.currentTarget === this.el && document.activeElement === this.input) {
+        return
+      }
+
       if (!this.hasSelection()) {
         return
       }
@@ -190,6 +239,10 @@ export const GhosttyTerminal = {
     }
 
     this.el.addEventListener("focus", this.onContainerFocus)
+    this.el.addEventListener("blur", this.onContainerBlur)
+    this.el.addEventListener("keydown", this.onKeydown)
+    this.el.addEventListener("paste", this.onPaste)
+    this.el.addEventListener("copy", this.onCopy)
     this.el.addEventListener("mousedown", this.onPointerDown)
     window.addEventListener("mousemove", this.onPointerMove)
     window.addEventListener("mouseup", this.onPointerUp)
@@ -204,10 +257,17 @@ export const GhosttyTerminal = {
     this.input.addEventListener("focus", this.onInputFocus)
     this.input.addEventListener("blur", this.onInputBlur)
 
+    if (this.fit && typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => this.scheduleFit())
+      this.resizeObserver.observe(this.el)
+    }
+
     this.handleEvent("ghostty:render", ({ id, cells, cursor, mouse }) => {
       if (id !== this.el.id) return
       this.rowsData = cells
       this.cursor = cursor
+      this.cols = cells[0]?.length || this.cols
+      this.rows = cells.length || this.rows
       this.mouse = mouse || { tracking: false, x10: false, normal: false, button: false, any: false, sgr: false }
       if (this.mouseModeActive()) {
         this.clearSelection()
@@ -216,19 +276,38 @@ export const GhosttyTerminal = {
       this.renderSelection()
       this.syncCursorBlink()
       this.renderCursor()
+      this.scheduleFit()
+      this.sendReady()
+      this.scheduleAutofocus()
     })
 
     if (this.target) {
       this.pushEventTo(this.target, "refresh", {})
     }
+
+    this.focusInput()
+    window.addEventListener("pageshow", this.onWindowResize)
+    window.requestAnimationFrame(() => this.sendReady())
+    window.setTimeout(() => this.sendReady(), 50)
+    this.scheduleAutofocus()
   },
 
   destroyed() {
     this.stopCursorBlink()
+    this.stopAutofocus()
+    if (this.pendingFitTimer) {
+      window.clearTimeout(this.pendingFitTimer)
+      this.pendingFitTimer = null
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect()
+      this.resizeObserver = null
+    }
     window.removeEventListener("mousemove", this.onPointerMove)
     window.removeEventListener("mouseup", this.onPointerUp)
     window.removeEventListener("resize", this.onWindowResize)
     window.removeEventListener("scroll", this.onWindowResize, true)
+    window.removeEventListener("pageshow", this.onWindowResize)
   },
 
   renderCells(rows) {
@@ -643,9 +722,46 @@ export const GhosttyTerminal = {
   },
 
   focusInput() {
+    if (document.activeElement !== this.el) {
+      this.el.focus({ preventScroll: true })
+    }
+
     if (document.activeElement !== this.input) {
       this.input.focus({ preventScroll: true })
     }
+  },
+
+  scheduleAutofocus() {
+    if (!this.autofocus) {
+      return
+    }
+
+    if (document.activeElement === this.input) {
+      this.stopAutofocus()
+      return
+    }
+
+    this.stopAutofocus()
+
+    for (const delay of [0, 50, 150, 300, 600, 1000]) {
+      const timer = window.setTimeout(() => {
+        if (!this.el.isConnected || document.activeElement === this.input) {
+          return
+        }
+
+        this.focusInput()
+      }, delay)
+
+      this.autofocusTimers.push(timer)
+    }
+  },
+
+  stopAutofocus() {
+    for (const timer of this.autofocusTimers) {
+      window.clearTimeout(timer)
+    }
+
+    this.autofocusTimers = []
   },
 
   clearInput() {
@@ -669,6 +785,74 @@ export const GhosttyTerminal = {
       this.pushEventTo(this.target, name, payload)
     } else {
       this.pushEvent(name, payload)
+    }
+  },
+
+  scheduleFit() {
+    if (!this.fit) {
+      return
+    }
+
+    if (this.pendingFitTimer) {
+      window.clearTimeout(this.pendingFitTimer)
+    }
+
+    this.pendingFitTimer = window.setTimeout(() => {
+      this.pendingFitTimer = null
+      this.fitToContainer()
+    }, 75)
+  },
+
+  sendReady() {
+    if (this.readySent) {
+      return
+    }
+
+    const size = this.fit ? this.currentFitSize() : { cols: this.cols, rows: this.rows }
+
+    if (!size) {
+      return
+    }
+
+    this.lastFitCols = size.cols
+    this.lastFitRows = size.rows
+    this.pushHookEvent("ready", size)
+    this.readySent = true
+  },
+
+  fitToContainer() {
+    const size = this.currentFitSize()
+
+    if (!size) {
+      return
+    }
+
+    const { cols, rows } = size
+
+    if (cols === this.lastFitCols && rows === this.lastFitRows) {
+      return
+    }
+
+    this.lastFitCols = cols
+    this.lastFitRows = rows
+    this.pushHookEvent("resize", { cols, rows })
+  },
+
+  currentFitSize() {
+    const metrics = this.measureCellMetrics()
+    const rect = this.el.getBoundingClientRect()
+    const preRect = this.pre.getBoundingClientRect()
+
+    const availableWidth = Math.max(0, rect.width - metrics.paddingLeft - metrics.paddingRight)
+    const availableHeight = Math.max(0, preRect.height - metrics.paddingTop - metrics.paddingBottom)
+
+    if (availableWidth < metrics.width * 20 || availableHeight < metrics.height * 5) {
+      return null
+    }
+
+    return {
+      cols: Math.max(2, Math.floor(availableWidth / metrics.width)),
+      rows: Math.max(2, Math.floor(availableHeight / metrics.height)),
     }
   },
 
@@ -705,7 +889,9 @@ export const GhosttyTerminal = {
       width,
       height: lineHeight,
       paddingLeft: parseFloat(styles.paddingLeft) || 0,
+      paddingRight: parseFloat(styles.paddingRight) || 0,
       paddingTop: parseFloat(styles.paddingTop) || 0,
+      paddingBottom: parseFloat(styles.paddingBottom) || 0,
     }
   },
 
@@ -753,3 +939,5 @@ function rgb(color) {
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
+
+export {GhosttyTerminal}

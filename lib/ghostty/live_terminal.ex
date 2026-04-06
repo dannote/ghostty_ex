@@ -22,6 +22,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     attr(:id, :string, required: true)
     attr(:cols, :integer, default: 80)
     attr(:rows, :integer, default: 24)
+    attr(:fit, :boolean, default: false)
+    attr(:autofocus, :boolean, default: false)
     attr(:class, :string, default: "")
     attr(:rest, :global)
 
@@ -39,11 +41,15 @@ if Code.ensure_loaded?(Phoenix.Component) do
         id={@id}
         class={@class}
         phx-hook="GhosttyTerminal"
+        phx-update="ignore"
         data-cols={@cols}
         data-rows={@rows}
+        data-fit={to_string(@fit)}
+        data-autofocus={to_string(@autofocus)}
         style="font-family: monospace; line-height: 1.2;"
         {@rest}
       >
+        <textarea data-ghostty-input="true" autofocus={@autofocus} aria-label="Terminal input"></textarea>
       </div>
       """
     end
@@ -135,6 +141,20 @@ if Code.ensure_loaded?(Phoenix.Component) do
         :none -> :none
         event -> Ghostty.Terminal.input_mouse(term, event)
       end
+    end
+
+    @doc """
+    Resizes the terminal and optional PTY to the given dimensions.
+    """
+    @spec handle_resize(GenServer.server(), pos_integer(), pos_integer(), GenServer.server() | nil) :: :ok
+    def handle_resize(term, cols, rows, pty \\ nil) do
+      Ghostty.Terminal.resize(term, cols, rows)
+
+      if pty do
+        Ghostty.PTY.resize(pty, cols, rows)
+      end
+
+      :ok
     end
 
     @doc """

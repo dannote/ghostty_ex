@@ -32,6 +32,18 @@ defmodule Ghostty.LiveTerminalTest do
       assert html =~ ~s(class="my-term")
     end
 
+    test "renders fit flag when enabled" do
+      html = render_component(&LiveTerminal.terminal/1, id: "t-fit", fit: true)
+
+      assert html =~ ~s(data-fit="true")
+    end
+
+    test "renders autofocus flag when enabled" do
+      html = render_component(&LiveTerminal.terminal/1, id: "t-focus", autofocus: true)
+
+      assert html =~ ~s(data-autofocus="true")
+    end
+
     test "passes through global attributes" do
       html = render_component(&LiveTerminal.terminal/1, id: "t3", "data-test": "yes")
 
@@ -178,6 +190,15 @@ defmodule Ghostty.LiveTerminalTest do
       assert :ok = LiveTerminal.handle_text(term, "hello")
       assert {:ok, text} = Ghostty.Terminal.snapshot(term)
       assert text =~ "hello"
+    end
+  end
+
+  describe "handle_resize/4" do
+    test "resizes the terminal" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+
+      assert :ok = LiveTerminal.handle_resize(term, 20, 5)
+      assert {20, 5} = Ghostty.Terminal.size(term)
     end
   end
 
