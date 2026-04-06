@@ -156,7 +156,7 @@ defmodule LiveTerminalWeb.TerminalLive do
                 term={@term}
                 pty={@pty}
                 fit={@fit?}
-                autofocus={true}
+                autofocus={false}
                 class="live-terminal-shell"
               />
             <% else %>

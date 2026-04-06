@@ -42,6 +42,77 @@ defmodule Features.TerminalTest do
         assert result["promptIndex"] == 0
       end
     )
+    |> evaluate(
+      ~S"""
+      (() => new Promise((resolve) => {
+        const input = document.getElementById("startup-command")
+        input?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+        input?.focus()
+
+        setTimeout(() => {
+          const term = document.querySelector("#term-1")
+          const active = document.activeElement
+          resolve({
+            activeId: active?.id ?? null,
+            activeInsideTerm: term?.contains(active) ?? false,
+          })
+        }, 400)
+      }))()
+      """,
+      [timeout: 2_000],
+      fn result ->
+        assert result["activeId"] == "startup-command"
+        refute result["activeInsideTerm"]
+      end
+    )
+    |> evaluate(
+      ~S"""
+      (() => new Promise((resolve) => {
+        const term = document.querySelector("#term-1")
+        const termRect = term.getBoundingClientRect()
+        term.dispatchEvent(new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          buttons: 1,
+          clientX: termRect.left + 24,
+          clientY: termRect.top + 24,
+        }))
+
+        const text = document.querySelector("header p")
+        const selection = window.getSelection()
+        const range = document.createRange()
+        text?.dispatchEvent(new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          buttons: 1,
+        }))
+        range.selectNodeContents(text)
+        selection.removeAllRanges()
+        selection.addRange(range)
+        window.dispatchEvent(new MouseEvent("mouseup", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          buttons: 0,
+        }))
+
+        setTimeout(() => {
+          const active = document.activeElement
+          resolve({
+            selectedText: selection.toString(),
+            activeInsideTerm: term?.contains(active) ?? false,
+          })
+        }, 400)
+      }))()
+      """,
+      [timeout: 2_000],
+      fn result ->
+        assert result["selectedText"] =~ "The browser hook renders Ghostty cells"
+        refute result["activeInsideTerm"]
+      end
+    )
   end
 
   test "demo controls drive a colorized mouse-reporting session", %{conn: conn} do
@@ -114,35 +185,16 @@ defmodule Features.TerminalTest do
     )
     |> evaluate(
       ~S"""
-      (() => new Promise((resolve) => {
-        const started = performance.now()
-
-        const poll = () => {
-          const term = document.querySelector("#term-2")
-          const active = document.activeElement
-          const activeInsideTerm = term?.contains(active) ?? false
-          const activeIsTerminal = active?.tagName === "TEXTAREA" || active === term
-
-          if (activeInsideTerm && activeIsTerminal) {
-            resolve({activeIsTerminal, activeInsideTerm})
-            return
-          }
-
-          if (performance.now() - started > 3000) {
-            resolve({activeIsTerminal, activeInsideTerm, activeTag: active?.tagName ?? null})
-            return
-          }
-
-          setTimeout(poll, 50)
+      (() => {
+        const term = document.querySelector("#term-2")
+        const active = document.activeElement
+        return {
+          activeInsideTerm: term?.contains(active) ?? false,
         }
-
-        poll()
-      }))()
+      })()
       """,
-      [timeout: 4_000],
       fn result ->
-        assert result["activeIsTerminal"]
-        assert result["activeInsideTerm"]
+        refute result["activeInsideTerm"]
       end
     )
     |> drag("#term-2",

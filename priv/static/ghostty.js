@@ -19,8 +19,10 @@ const GhosttyTerminal = {
     this.selectionAnchor = null
     this.selectionFocus = null
     this.selecting = false
+    this.pointerActive = false
     this.autofocusTimers = []
     this.readySent = false
+    this.autofocusPending = this.autofocus
 
     this.el.tabIndex = 0
     this.el.style.position = "relative"
@@ -138,6 +140,17 @@ const GhosttyTerminal = {
     this.onPointerDown = (e) => this.handlePointerDown(e)
     this.onPointerMove = (e) => this.handlePointerMove(e)
     this.onPointerUp = (e) => this.handlePointerUp(e)
+    this.onDocumentPointerDown = (e) => {
+      if (!this.isInsideTerminal(e.target)) {
+        this.disableAutofocus()
+        this.blurTerminal()
+      }
+    }
+    this.onDocumentFocusIn = (e) => {
+      if (!this.isInsideTerminal(e.target)) {
+        this.disableAutofocus()
+      }
+    }
     this.onContextMenu = (e) => {
       if (this.selecting) {
         e.preventDefault()
@@ -147,7 +160,6 @@ const GhosttyTerminal = {
       this.scheduleFit()
       this.renderSelection()
       this.renderCursor()
-      this.scheduleAutofocus()
     }
 
     this.onKeydown = (e) => {
@@ -225,6 +237,8 @@ const GhosttyTerminal = {
     this.onInputFocus = () => {
       this.focused = true
       this.cursorBlinkVisible = true
+      this.autofocusPending = false
+      this.stopAutofocus()
       this.pushHookEvent("focus", { focused: true })
       this.syncCursorBlink()
       this.renderCursor()
@@ -233,6 +247,10 @@ const GhosttyTerminal = {
     this.onInputBlur = () => {
       this.focused = false
       this.cursorBlinkVisible = true
+      if (!this.isInsideTerminal(document.activeElement)) {
+        this.autofocusPending = false
+        this.stopAutofocus()
+      }
       this.pushHookEvent("focus", { focused: false })
       this.syncCursorBlink()
       this.renderCursor()
@@ -246,6 +264,8 @@ const GhosttyTerminal = {
     this.el.addEventListener("mousedown", this.onPointerDown)
     window.addEventListener("mousemove", this.onPointerMove)
     window.addEventListener("mouseup", this.onPointerUp)
+    document.addEventListener("mousedown", this.onDocumentPointerDown, true)
+    document.addEventListener("focusin", this.onDocumentFocusIn, true)
     this.el.addEventListener("contextmenu", this.onContextMenu)
     window.addEventListener("resize", this.onWindowResize)
     window.addEventListener("scroll", this.onWindowResize, true)
@@ -278,7 +298,6 @@ const GhosttyTerminal = {
       this.renderCursor()
       this.scheduleFit()
       this.sendReady()
-      this.scheduleAutofocus()
     })
 
     if (this.target) {
@@ -304,6 +323,8 @@ const GhosttyTerminal = {
     }
     window.removeEventListener("mousemove", this.onPointerMove)
     window.removeEventListener("mouseup", this.onPointerUp)
+    document.removeEventListener("mousedown", this.onDocumentPointerDown, true)
+    document.removeEventListener("focusin", this.onDocumentFocusIn, true)
     window.removeEventListener("resize", this.onWindowResize)
     window.removeEventListener("scroll", this.onWindowResize, true)
     window.removeEventListener("pageshow", this.onWindowResize)
@@ -435,6 +456,7 @@ const GhosttyTerminal = {
       return
     }
 
+    this.pointerActive = true
     this.focusInput(true)
 
     if (!this.mouseModeActive() && e.button === 0 && !this.hasMouseModifiers(e)) {
@@ -449,6 +471,10 @@ const GhosttyTerminal = {
   },
 
   handlePointerMove(e) {
+    if (!this.pointerActive) {
+      return
+    }
+
     const point = this.cellPointFromEvent(e)
     if (!point) {
       return
@@ -466,6 +492,11 @@ const GhosttyTerminal = {
   },
 
   handlePointerUp(e) {
+    if (!this.pointerActive) {
+      return
+    }
+
+    this.pointerActive = false
     const point = this.cellPointFromEvent(e)
 
     if (this.selecting && point && !this.mouseModeActive()) {
@@ -734,6 +765,28 @@ const GhosttyTerminal = {
     }
   },
 
+  blurTerminal() {
+    this.pointerActive = false
+
+    if (document.activeElement === this.input) {
+      this.input.blur()
+    }
+
+    if (document.activeElement === this.el) {
+      this.el.blur()
+    }
+
+    this.focused = false
+    this.cursorBlinkVisible = true
+    this.syncCursorBlink()
+    this.renderCursor()
+  },
+
+  disableAutofocus() {
+    this.autofocusPending = false
+    this.stopAutofocus()
+  },
+
   shouldAutofocus() {
     const active = document.activeElement
 
@@ -749,12 +802,12 @@ const GhosttyTerminal = {
   },
 
   scheduleAutofocus() {
-    if (!this.autofocus) {
+    if (!this.autofocusPending) {
       return
     }
 
     if (document.activeElement === this.input) {
-      this.stopAutofocus()
+      this.disableAutofocus()
       return
     }
 
@@ -767,7 +820,7 @@ const GhosttyTerminal = {
         }
 
         if (!this.shouldAutofocus()) {
-          this.stopAutofocus()
+          this.disableAutofocus()
           return
         }
 
