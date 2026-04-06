@@ -3,19 +3,20 @@ defmodule Features.TerminalTest do
     async: false,
     headless: true
 
-  import PhoenixTest.Playwright, only: [drag: 3, evaluate: 3, evaluate: 4, screenshot: 2]
+  import PhoenixTest.Playwright,
+    only: [drag: 3, evaluate: 3, evaluate: 4, screenshot: 2]
 
   test "fit mode renders a flush-left prompt on startup", %{conn: conn} do
     conn
-    |> visit("/?fit=1")
-    |> assert_has("#term[phx-hook='GhosttyTerminal']")
+    |> visit("/")
+    |> assert_has("#term-1[phx-hook='GhosttyTerminal']")
     |> evaluate(
       ~S"""
       (() => new Promise((resolve) => {
         const started = performance.now()
 
         const poll = () => {
-          const term = document.querySelector("#term")
+          const term = document.querySelector("#term-1")
           const pre = term?.querySelector("pre")
           const lines = (pre?.innerText || "").split("\n")
           const promptLine = lines.find((line) => line.includes("ghostty$"))
@@ -43,26 +44,27 @@ defmodule Features.TerminalTest do
     )
   end
 
-  test "fit mode renders a visible terminal and disables local selection during mouse reporting",
-       %{
-         conn: conn
-       } do
-    encoded_cmd = URI.encode_www_form("printf '\\033[?1000h\\033[?1006h'; echo hello")
-
+  test "demo controls drive a colorized mouse-reporting session", %{conn: conn} do
     conn
-    |> visit("/?banner=1&fit=1&cmd=#{encoded_cmd}")
-    |> assert_has("#term[phx-hook='GhosttyTerminal']")
+    |> visit("/")
+    |> assert_has("#demo-controls")
+    |> PhoenixTest.fill_in("#startup-command", "Startup command",
+      with:
+        "printf '\\033[31mred\\033[0m \\033[32mgreen\\033[0m \\033[34mblue\\033[0m\\n\\033[?1000h\\033[?1006h'; echo hello"
+    )
+    |> PhoenixTest.click_button("#demo-controls", "Restart session")
+    |> assert_has("#term-2[phx-hook='GhosttyTerminal']")
     |> evaluate(
       ~S"""
       (() => new Promise((resolve) => {
         const started = performance.now()
 
         const poll = () => {
-          const term = document.querySelector("#term")
+          const term = document.querySelector("#term-2")
           const pre = term?.querySelector("pre")
           const text = pre?.innerText || ""
 
-          if (pre && text.includes("Welcome to Ghostty!") && text.includes("hello")) {
+          if (pre && text.includes("hello") && text.includes("red") && text.includes("green") && text.includes("blue")) {
             resolve({
               hasPre: true,
               width: pre.getBoundingClientRect().width,
@@ -100,7 +102,7 @@ defmodule Features.TerminalTest do
         const started = performance.now()
 
         const poll = () => {
-          const term = document.querySelector("#term")
+          const term = document.querySelector("#term-2")
           const active = document.activeElement
           const activeInsideTerm = term?.contains(active) ?? false
           const activeIsTerminal = active?.tagName === "TEXTAREA" || active === term
@@ -127,14 +129,14 @@ defmodule Features.TerminalTest do
         assert result["activeInsideTerm"]
       end
     )
-    |> drag("#term",
-      to: "#term",
+    |> drag("#term-2",
+      to: "#term-2",
       playwright: [sourcePosition: %{x: 24, y: 20}, targetPosition: %{x: 140, y: 20}]
     )
     |> evaluate(
       ~S"""
       (() => {
-        const term = document.querySelector("#term")
+        const term = document.querySelector("#term-2")
         return {
           selectionRects: term.querySelector("[data-ghostty-selection-layer]").childElementCount,
         }

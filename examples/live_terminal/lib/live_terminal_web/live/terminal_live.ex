@@ -1,21 +1,32 @@
 defmodule LiveTerminalWeb.TerminalLive do
   use Phoenix.LiveView
 
+  @default_fit true
   @startup_timeout 1_250
+  @term_env "TERM=xterm-256color"
+  @shell_env "BASH_SILENCE_DEPRECATION_WARNING=1"
+  @prompt "ghostty$ "
 
   @impl true
   def mount(params, _session, socket) do
+    %{banner?: banner?, fit?: fit?, command: command} = initial_options(params)
+
     socket =
       assign(socket,
         term: nil,
         pty: nil,
-        banner?: !!params["banner"],
-        command: params["cmd"],
+        component_id: "term-1",
+        session_version: 1,
+        banner?: banner?,
+        fit?: fit?,
+        command: command,
+        banner_input?: banner?,
+        fit_input?: fit?,
+        command_input: command || "",
         boot_output: "",
         pty_restart_attempts: 0,
         shell_prompt_seen?: false,
-        startup_ref: nil,
-        fit?: Map.get(params, "fit", "1") != "0"
+        startup_ref: nil
       )
 
     if connected?(socket) do
@@ -59,11 +70,89 @@ defmodule LiveTerminalWeb.TerminalLive do
             </div>
           </div>
 
+          <div class="terminal-controls-wrap">
+            <form id="demo-controls" phx-change="controls_changed" phx-submit="restart_terminal" class="terminal-controls">
+              <label class="terminal-field terminal-field-command" for="startup-command">
+                <span class="terminal-field-label">Startup command</span>
+                <input
+                  id="startup-command"
+                  name="command"
+                  type="text"
+                  value={@command_input}
+                  placeholder="printf '\\033[31mred\\033[0m'; echo hello"
+                  class="terminal-input"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+
+              <div class="terminal-control-row">
+                <label class="terminal-toggle" for="show-banner">
+                  <input id="show-banner" type="checkbox" name="banner" checked={@banner_input?} />
+                  <span>Welcome banner</span>
+                </label>
+
+                <label class="terminal-toggle" for="fit-terminal">
+                  <input id="fit-terminal" type="checkbox" name="fit" checked={@fit_input?} />
+                  <span>Fit to panel</span>
+                </label>
+
+                <span class="terminal-env-pill"><%= term_env() %></span>
+              </div>
+
+              <div class="terminal-actions">
+                <button id="restart-session" type="submit" class="terminal-button terminal-button-primary">
+                  Restart session
+                </button>
+
+                <button
+                  id="preset-blank-shell"
+                  type="button"
+                  class="terminal-button"
+                  phx-click="run_preset"
+                  phx-value-command=""
+                >
+                  Blank shell
+                </button>
+
+                <button
+                  id="preset-hello-demo"
+                  type="button"
+                  class="terminal-button"
+                  phx-click="run_preset"
+                  phx-value-command={hello_demo_command()}
+                >
+                  Hello demo
+                </button>
+
+                <button
+                  id="preset-color-demo"
+                  type="button"
+                  class="terminal-button"
+                  phx-click="run_preset"
+                  phx-value-command={color_demo_command()}
+                >
+                  Color demo
+                </button>
+
+                <button
+                  id="preset-mouse-demo"
+                  type="button"
+                  class="terminal-button"
+                  phx-click="run_preset"
+                  phx-value-command={mouse_demo_command()}
+                >
+                  Mouse mode demo
+                </button>
+              </div>
+            </form>
+          </div>
+
           <div class="min-h-[420px] p-0">
             <%= if @term do %>
               <.live_component
                 module={Ghostty.LiveTerminal.Component}
-                id="term"
+                id={@component_id}
                 term={@term}
                 pty={@pty}
                 fit={@fit?}
@@ -86,7 +175,35 @@ defmodule LiveTerminalWeb.TerminalLive do
   end
 
   @impl true
-  def handle_info({:ghostty_terminal_ready, "term", cols, rows}, %{assigns: %{pty: nil}} = socket) do
+  def handle_event("controls_changed", params, socket) do
+    {:noreply, assign_control_inputs(socket, params)}
+  end
+
+  def handle_event("restart_terminal", params, socket) do
+    socket =
+      socket
+      |> assign_control_inputs(params)
+      |> apply_control_inputs()
+      |> restart_terminal_session()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("run_preset", %{"command" => command}, socket) do
+    socket =
+      socket
+      |> assign(command_input: command)
+      |> apply_control_inputs()
+      |> restart_terminal_session()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:ghostty_terminal_ready, component_id, cols, rows},
+        %{assigns: %{component_id: component_id, pty: nil}} = socket
+      ) do
     {:noreply, start_pty_session(socket, cols, rows)}
   end
 
@@ -100,7 +217,7 @@ defmodule LiveTerminalWeb.TerminalLive do
       |> append_boot_output(data)
       |> maybe_mark_shell_prompt()
 
-    refresh_terminal()
+    refresh_terminal(socket)
     {:noreply, socket}
   end
 
@@ -139,20 +256,25 @@ defmodule LiveTerminalWeb.TerminalLive do
 
   @impl true
   def terminate(_reason, socket) do
-    if pty = socket.assigns[:pty] do
-      Ghostty.PTY.close(pty)
-    end
-
+    stop_session(socket)
     :ok
   catch
     :exit, _ -> :ok
+  end
+
+  defp initial_options(params) do
+    %{
+      banner?: truthy_param?(params["banner"]),
+      fit?: truthy_param?(Map.get(params, "fit", if(@default_fit, do: "1", else: "0"))),
+      command: normalize_command(params["cmd"])
+    }
   end
 
   defp start_terminal(socket) do
     {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
 
     socket
-    |> assign(term: term, pty: nil)
+    |> assign(term: term, pty: nil, boot_output: "", shell_prompt_seen?: false, startup_ref: nil)
     |> write_banner()
   end
 
@@ -171,26 +293,88 @@ defmodule LiveTerminalWeb.TerminalLive do
     )
   end
 
+  defp restart_terminal_session(socket) do
+    socket
+    |> stop_session()
+    |> bump_component_id()
+    |> start_terminal()
+  end
+
+  defp stop_session(socket) do
+    if pty = socket.assigns[:pty] do
+      safe_stop(pty)
+    end
+
+    if term = socket.assigns[:term] do
+      safe_stop(term)
+    end
+
+    assign(socket, term: nil, pty: nil, startup_ref: nil)
+  end
+
+  defp safe_stop(pid) when is_pid(pid) do
+    GenServer.stop(pid, :normal)
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp bump_component_id(socket) do
+    session_version = socket.assigns.session_version + 1
+
+    assign(socket,
+      component_id: component_id(session_version),
+      session_version: session_version,
+      pty_restart_attempts: 0
+    )
+  end
+
+  defp component_id(session_version), do: "term-#{session_version}"
+
+  defp assign_control_inputs(socket, params) do
+    assign(socket,
+      banner_input?: checkbox_enabled?(params, "banner", socket.assigns.banner_input?),
+      fit_input?: checkbox_enabled?(params, "fit", socket.assigns.fit_input?),
+      command_input: Map.get(params, "command", socket.assigns.command_input)
+    )
+  end
+
+  defp apply_control_inputs(socket) do
+    assign(socket,
+      banner?: socket.assigns.banner_input?,
+      fit?: socket.assigns.fit_input?,
+      command: normalize_command(socket.assigns.command_input)
+    )
+  end
+
+  defp checkbox_enabled?(params, key, _current), do: Map.has_key?(params, key)
+
+  defp normalize_command(nil), do: nil
+
+  defp normalize_command(command) do
+    case String.trim(command) do
+      "" -> nil
+      _ -> command
+    end
+  end
+
+  defp truthy_param?(value), do: value not in [nil, "", "0", "false"]
+
   defp start_command, do: "/usr/bin/env"
 
   defp interactive_start_args do
-    [
-      "BASH_SILENCE_DEPRECATION_WARNING=1",
-      "PS1=ghostty$ ",
-      "/bin/bash"
-      | bash_args()
-    ]
+    [@term_env, @shell_env, "PS1=#{@prompt}", "/bin/bash" | bash_args()]
   end
 
   defp command_start_args(command) do
     [
-      "BASH_SILENCE_DEPRECATION_WARNING=1",
+      @term_env,
+      @shell_env,
       "/bin/bash",
       "--noprofile",
       "--norc",
       "-lc",
       command <>
-        "; exec /usr/bin/env BASH_SILENCE_DEPRECATION_WARNING=1 PS1='ghostty$ ' /bin/bash --noprofile --norc -i"
+        "; exec /usr/bin/env #{@term_env} #{@shell_env} PS1='#{@prompt}' /bin/bash --noprofile --norc -i"
     ]
   end
 
@@ -221,18 +405,18 @@ defmodule LiveTerminalWeb.TerminalLive do
   end
 
   defp restart_pty(socket) do
-    Ghostty.Terminal.reset(socket.assigns.term)
-
     if socket.assigns.pty do
-      Ghostty.PTY.close(socket.assigns.pty)
+      safe_stop(socket.assigns.pty)
     end
+
+    Ghostty.Terminal.reset(socket.assigns.term)
 
     socket =
       socket
       |> assign(pty: nil, pty_restart_attempts: socket.assigns.pty_restart_attempts + 1)
       |> write_banner()
 
-    refresh_terminal()
+    refresh_terminal(socket)
 
     {cols, rows} = Ghostty.Terminal.size(socket.assigns.term)
     start_pty_session(socket, cols, rows)
@@ -265,7 +449,19 @@ defmodule LiveTerminalWeb.TerminalLive do
     socket
   end
 
-  defp refresh_terminal do
-    send_update(Ghostty.LiveTerminal.Component, id: "term", refresh: true)
+  defp refresh_terminal(socket) do
+    send_update(Ghostty.LiveTerminal.Component, id: socket.assigns.component_id, refresh: true)
+  end
+
+  defp term_env, do: @term_env
+
+  defp hello_demo_command, do: "echo hello"
+
+  defp color_demo_command do
+    ~S(printf '\033[31mred\033[0m \033[32mgreen\033[0m \033[34mblue\033[0m\n')
+  end
+
+  defp mouse_demo_command do
+    ~S(printf '\033[31mred\033[0m \033[32mgreen\033[0m \033[34mblue\033[0m\n\033[?1000h\033[?1006h'; echo hello)
   end
 end

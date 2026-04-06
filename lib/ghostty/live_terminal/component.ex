@@ -185,7 +185,13 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
     end
 
     defp push_render(socket) do
-      Ghostty.LiveTerminal.push_render(socket, socket.assigns.id, socket.assigns.term)
+      term = socket.assigns.term
+
+      if is_pid(term) and Process.alive?(term) do
+        Ghostty.LiveTerminal.push_render(socket, socket.assigns.id, term)
+      else
+        socket
+      end
     end
 
     defp parse_dimension!(value) when is_integer(value) and value > 0, do: value
