@@ -145,8 +145,7 @@ defmodule MyAppWeb.TerminalLive do
 
   def mount(_params, _session, socket) do
     {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-    {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
-    {:ok, assign(socket, term: term, pty: pty)}
+    {:ok, assign(socket, term: term, pty: nil)}
   end
 
   def render(assigns) do
@@ -156,8 +155,15 @@ defmodule MyAppWeb.TerminalLive do
       id="term"
       term={@term}
       pty={@pty}
+      fit={true}
+      autofocus={true}
     />
     """
+  end
+
+  def handle_info({:ghostty_terminal_ready, "term", cols, rows}, socket) do
+    {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: cols, rows: rows)
+    {:noreply, assign(socket, pty: pty)}
   end
 
   def handle_info({:data, data}, socket) do
@@ -170,7 +176,24 @@ defmodule MyAppWeb.TerminalLive do
 end
 ```
 
-For full control, use the low-level helpers directly:
+### Component assigns
+
+| Assign | Default | Description |
+|---|---|---|
+| `:term` | required | `Ghostty.Terminal` pid |
+| `:pty` | `nil` | `Ghostty.PTY` pid; key input is written here when present |
+| `:fit` | `false` | Auto-fit terminal size to the rendered container |
+| `:autofocus` | `false` | Focus the hidden terminal input on mount |
+| `:class` | `""` | CSS class for the container div |
+
+When `fit` is enabled, the hook measures the container and sends a `"ready"`
+event with the computed `cols` and `rows`. The component resizes the terminal
+and notifies the parent with `{:ghostty_terminal_ready, id, cols, rows}` —
+use this to defer PTY startup until the real container size is known.
+
+### Low-level helpers
+
+For full control, use the helpers directly:
 
 ```elixir
 Ghostty.LiveTerminal.key_event_from_params(params)       # parse browser key event
@@ -178,11 +201,26 @@ Ghostty.LiveTerminal.handle_key(term, params)             # parse + encode
 Ghostty.LiveTerminal.push_render(socket, "term-id", term) # push cells to client
 ```
 
+### Asset bundling
+
 `mix igniter.install ghostty` vendors `ghostty.js` into your app assets and wires
 `GhosttyTerminal` into `assets/js/app.js` automatically.
 
+TypeScript source lives in `priv/ts/` and is bundled at compile time via
+[OXC](https://hex.pm/packages/oxc) — no Node.js or Bun required for end users.
+
+Contributors can run TypeScript quality checks:
+
+```bash
+bun install && bun run lint && bun run format:check
+```
+
+### Demo app
+
 See [`examples/live_terminal/`](https://github.com/dannote/ghostty_ex/tree/master/examples/live_terminal)
-for a complete runnable app with Playwright browser tests.
+for a complete runnable app with Playwright browser tests. It includes a control
+panel with preset commands, fit/banner toggles, and sets `TERM=xterm-256color`
+for colorized shell output.
 
 ## Examples
 
