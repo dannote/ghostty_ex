@@ -40,7 +40,7 @@
 ### Build
 
 - Add `{:oxc, "~> 0.5"}` dependency for compile-time TypeScript bundling
-- Add `Mix.Compilers.GhosttyJS` compiler that bundles `priv/ts/hook.ts` → `priv/static/ghostty.js`
+- Add a Mix compiler that bundles `priv/ts/hook.ts` → `priv/static/ghostty.js`
 - Add CI job for TypeScript lint and format checks
 - Stop tracking `priv/static/ghostty.js` in git
 
