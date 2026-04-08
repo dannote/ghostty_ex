@@ -197,13 +197,13 @@ defmodule LiveTerminalWeb.TerminalLive do
 
   @impl true
   def handle_info(
-        {:ghostty_terminal_ready, component_id, cols, rows},
+        {:terminal_ready, component_id, cols, rows},
         %{assigns: %{component_id: component_id, pty: nil}} = socket
       ) do
     {:noreply, start_pty_session(socket, cols, rows)}
   end
 
-  def handle_info({:ghostty_terminal_ready, _id, _cols, _rows}, socket), do: {:noreply, socket}
+  def handle_info({:terminal_ready, _id, _cols, _rows}, socket), do: {:noreply, socket}
 
   def handle_info({:data, data}, socket) do
     Ghostty.Terminal.write(socket.assigns.term, data)

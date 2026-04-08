@@ -161,7 +161,7 @@ defmodule MyAppWeb.TerminalLive do
     """
   end
 
-  def handle_info({:ghostty_terminal_ready, "term", cols, rows}, socket) do
+  def handle_info({:terminal_ready, "term", cols, rows}, socket) do
     {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: cols, rows: rows)
     {:noreply, assign(socket, pty: pty)}
   end
@@ -188,7 +188,7 @@ end
 
 When `fit` is enabled, the hook measures the container and sends a `"ready"`
 event with the computed `cols` and `rows`. The component resizes the terminal
-and notifies the parent with `{:ghostty_terminal_ready, id, cols, rows}` —
+and notifies the parent with `{:terminal_ready, id, cols, rows}` —
 use this to defer PTY startup until the real container size is known.
 
 ### Low-level helpers

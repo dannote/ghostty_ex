@@ -138,7 +138,7 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
       rows = parse_dimension!(rows)
 
       Ghostty.Terminal.resize(socket.assigns.term, cols, rows)
-      send(self(), {:ghostty_terminal_ready, socket.assigns.id, cols, rows})
+      send(self(), {:terminal_ready, socket.assigns.id, cols, rows})
 
       {:noreply,
        socket
