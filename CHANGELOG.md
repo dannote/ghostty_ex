@@ -1,18 +1,48 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-04-08)
 
 ### LiveView
 
-- Add render-state mouse mode metadata so the browser hook can detect active terminal mouse reporting
-- Upgrade `priv/static/ghostty.js` with a real cursor overlay, hidden textarea input, IME/paste support, focus reporting, local selection rendering, and mouse forwarding
-- Automatically disable the local selection overlay whenever terminal mouse reporting is active
-- Cover the richer Live terminal behavior with Elixir and browser-level tests
+- Add render-state cursor overlay with block, bar, underline, and hollow styles
+- Add hidden textarea input layer with IME composition and paste support
+- Add local selection rendering with copy support
+- Add mouse forwarding with mouse-mode-aware selection backoff
+- Add `fit` option for auto-fit terminal size to container via `ResizeObserver`
+- Add `autofocus` option for initial terminal focus on mount
+- Add `{:terminal_ready, id, cols, rows}` message so the parent can defer PTY startup until the real container size is known
+- Add `handle_resize/4` helper for resizing terminal and PTY together
+- Add `phx-update="ignore"` to terminal hook roots so LiveView patches don't destroy client-rendered DOM
+- Fix focus escape sequences being written into the terminal buffer when no PTY is attached
+- Fix terminal reclaiming focus from outside page elements during text selection
+- Track mouse modes in `Ghostty.Terminal` from VT writes for reliable LiveView payloads
+
+### Hook
+
+- Rewrite `ghostty.js` to TypeScript under `priv/ts/` with strict types
+- Bundle TypeScript at compile time via OXC — no Node.js or Bun required
+- Add oxlint and oxfmt for TypeScript quality checks
+- Ship `priv/ts/` source in the Hex package instead of pre-built JS
+- Add explicit outside-click blur so the terminal doesn't steal focus
+- Add pointer-active tracking so outside mouse interactions can't refocus the terminal
 
 ### Examples
 
-- Polish `examples/live_terminal/` into a fuller terminal demo with Tailwind styling and browser coverage in CI
-- Add a browser regression test that verifies local selection stays disabled while mouse reporting is enabled
+- Replace URL-param demo with a control panel: startup command input, fit/banner toggles, preset buttons
+- Add `TERM=xterm-256color` and `COLORTERM=truecolor` for colorized shell output
+- Add demo-specific bash rcfile with `ls` color aliases
+- Use `bash -lc` for startup commands to avoid PTY write races
+- Defer PTY startup until the hook reports its real container size
+- Replace timer-based startup with event-driven ready handshake
+- Add browser tests for flush-left prompt, outside focus, and demo controls
+- Wire example browser tests into CI
+
+### Build
+
+- Add `{:oxc, "~> 0.5"}` dependency for compile-time TypeScript bundling
+- Add `Mix.Compilers.GhosttyJS` compiler that bundles `priv/ts/hook.ts` → `priv/static/ghostty.js`
+- Add CI job for TypeScript lint and format checks
+- Stop tracking `priv/static/ghostty.js` in git
 
 ## 0.2.4 (2026-04-02)
 
@@ -118,17 +148,16 @@ Initial release.
 
 ### Terminal
 
-- `Ghostty.Terminal` GenServer with full lifecycle management
-- `write/2`, `snapshot/2`, `resize/3`, `reset/1`, `scroll/2`, `cursor/1`, `size/1`
-- Supervision support, named terminals
-
-### NIF
-
-- Zigler-based NIFs linking libghostty-vt via C API
-- NIF resource with destructor
-- BEAM allocator for format buffers
+- `start_link/1` with `:cols`, `:rows`, `:max_scrollback`, `:name`
+- `write/2` — VT-encoded data
+- `resize/3` — with text reflow
+- `reset/1` — full terminal reset (RIS)
+- `snapshot/2` — `:plain`, `:html`, `:vt` formats
+- `scroll/2` — viewport scrolling
+- `cursor/1` — cursor position
+- `size/1` — terminal dimensions
 
 ### Build
 
-- Precompiled NIF binaries for x86_64 Linux, aarch64 Linux, aarch64 macOS
-- Requires Zig 0.15+ for source builds
+- libghostty-vt C API via Zig NIFs (Zigler)
+- Precompiled NIF binaries for Linux and macOS
