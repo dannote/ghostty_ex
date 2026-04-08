@@ -44,22 +44,15 @@ defmodule Mix.Compilers.GhosttyJS do
         {Path.basename(path), File.read!(path)}
       end)
 
-    case OXC.bundle(files, entry: "hook.ts") do
+    case OXC.bundle(files, entry: "hook.ts", format: :esm) do
       {:ok, js} ->
         File.mkdir_p!(Path.dirname(output))
-        esm = iife_to_esm(js, "GhosttyTerminal")
-        File.write!(output, esm)
+        File.write!(output, js)
         Mix.shell().info("Compiled #{length(files)} TypeScript modules → #{@output}")
         :ok
 
       {:error, errors} ->
         Mix.raise("TypeScript bundle failed: #{inspect(errors)}")
     end
-  end
-
-  defp iife_to_esm(js, export_name) do
-    # OXC outputs: (function(exports) { ... exports.Foo = Foo; return exports; })({});
-    # We convert to: const _m = (function(exports) { ... })({});\nexport const Foo = _m.Foo;
-    "const _m = #{js}\nconst #{export_name} = _m.#{export_name}\nexport { #{export_name} }\n"
   end
 end
