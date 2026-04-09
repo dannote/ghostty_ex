@@ -25,7 +25,13 @@ defmodule Ghostty.LiveTerminalTest do
     end
 
     test "renders custom dimensions and class" do
-      html = render_component(&LiveTerminal.terminal/1, id: "t2", cols: 120, rows: 40, class: "my-term")
+      html =
+        render_component(&LiveTerminal.terminal/1,
+          id: "t2",
+          cols: 120,
+          rows: 40,
+          class: "my-term"
+        )
 
       assert html =~ ~s(data-cols="120")
       assert html =~ ~s(data-rows="40")
@@ -58,11 +64,13 @@ defmodule Ghostty.LiveTerminalTest do
     end
 
     test "parses Enter" do
-      assert %Ghostty.KeyEvent{key: :enter} = LiveTerminal.key_event_from_params(key_params("Enter"))
+      assert %Ghostty.KeyEvent{key: :enter} =
+               LiveTerminal.key_event_from_params(key_params("Enter"))
     end
 
     test "parses arrow keys" do
-      assert %Ghostty.KeyEvent{key: :arrow_up} = LiveTerminal.key_event_from_params(key_params("ArrowUp"))
+      assert %Ghostty.KeyEvent{key: :arrow_up} =
+               LiveTerminal.key_event_from_params(key_params("ArrowUp"))
     end
 
     test "parses modifiers" do
@@ -72,7 +80,8 @@ defmodule Ghostty.LiveTerminalTest do
     end
 
     test "parses digits" do
-      assert %Ghostty.KeyEvent{key: :digit_5} = LiveTerminal.key_event_from_params(key_params("5"))
+      assert %Ghostty.KeyEvent{key: :digit_5} =
+               LiveTerminal.key_event_from_params(key_params("5"))
     end
 
     test "parses function keys" do
@@ -274,6 +283,27 @@ defmodule Ghostty.LiveTerminalTest do
       assert Map.has_key?(cursor, :style)
       assert is_map(mouse)
       assert Map.has_key?(mouse, :tracking)
+    end
+
+    test "includes scrollbar state" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+      payload = LiveTerminal.render_payload("my-term", term)
+
+      assert %{scrollbar: %{total: total, offset: offset, len: len}} = payload
+      assert is_integer(total)
+      assert is_integer(offset)
+      assert is_integer(len)
+    end
+
+    test "includes focus_reporting state" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+
+      payload = LiveTerminal.render_payload("my-term", term)
+      assert %{focus_reporting: false} = payload
+
+      Ghostty.Terminal.write(term, "\e[?1004h")
+      payload = LiveTerminal.render_payload("my-term", term)
+      assert %{focus_reporting: true} = payload
     end
   end
 end

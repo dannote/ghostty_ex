@@ -68,10 +68,18 @@ defmodule Ghostty.Terminal do
           sgr: boolean()
         }
 
+  @type scrollbar :: %{
+          total: non_neg_integer(),
+          offset: non_neg_integer(),
+          len: non_neg_integer()
+        }
+
   @type render_state :: %{
           cells: [[cell()]],
           cursor: cursor_state(),
-          mouse: mouse_modes()
+          mouse: mouse_modes(),
+          scrollbar: scrollbar(),
+          focus_reporting: boolean()
         }
 
   @type option ::
@@ -82,7 +90,7 @@ defmodule Ghostty.Terminal do
 
   @unsupported_private_modes ["\e[?1034h", "\e[?1034l"]
 
-  defstruct [:ref, :cols, :rows, :mouse_modes]
+  defstruct [:ref, :cols, :rows, :mouse_modes, :focus_reporting]
 
   @doc """
   Starts a terminal process linked to the caller.
@@ -262,6 +270,22 @@ defmodule Ghostty.Terminal do
   end
 
   @doc """
+  Returns the scrollbar state for the terminal viewport.
+  """
+  @spec scrollbar(GenServer.server()) :: scrollbar()
+  def scrollbar(terminal) do
+    GenServer.call(terminal, :scrollbar)
+  end
+
+  @doc """
+  Returns whether focus reporting (DEC mode 1004) is enabled.
+  """
+  @spec focus_reporting?(GenServer.server()) :: boolean()
+  def focus_reporting?(terminal) do
+    GenServer.call(terminal, :focus_reporting?)
+  end
+
+  @doc """
   Scrolls the terminal viewport.
 
   Positive `delta` scrolls down (towards newer content),
@@ -333,7 +357,14 @@ defmodule Ghostty.Terminal do
     ref = Nif.nif_new(cols, rows, max_scrollback)
     Nif.nif_set_effect_pid(ref, Keyword.fetch!(opts, :owner))
 
-    {:ok, %__MODULE__{ref: ref, cols: cols, rows: rows, mouse_modes: default_mouse_modes()}}
+    {:ok,
+     %__MODULE__{
+       ref: ref,
+       cols: cols,
+       rows: rows,
+       mouse_modes: default_mouse_modes(),
+       focus_reporting: false
+     }}
   rescue
     e in ErlangError ->
       {:stop, {:nif_not_loaded, Exception.message(e)}}
@@ -358,7 +389,13 @@ defmodule Ghostty.Terminal do
   @impl true
   def handle_call({:write, data}, _from, state) do
     Nif.nif_vt_write(state.ref, data)
-    {:reply, :ok, %{state | mouse_modes: update_mouse_modes(state.mouse_modes, data)}}
+
+    {:reply, :ok,
+     %{
+       state
+       | mouse_modes: update_mouse_modes(state.mouse_modes, data),
+         focus_reporting: update_focus_reporting(state.focus_reporting, data)
+     }}
   end
 
   def handle_call({:resize, cols, rows}, _from, state) do
@@ -368,7 +405,7 @@ defmodule Ghostty.Terminal do
 
   def handle_call(:reset, _from, state) do
     Nif.nif_reset(state.ref)
-    {:reply, :ok, %{state | mouse_modes: default_mouse_modes()}}
+    {:reply, :ok, %{state | mouse_modes: default_mouse_modes(), focus_reporting: false}}
   end
 
   def handle_call({:snapshot, format}, _from, state) do
@@ -393,6 +430,14 @@ defmodule Ghostty.Terminal do
     {:reply, Nif.nif_render_cells(state.ref), state}
   end
 
+  def handle_call(:scrollbar, _from, state) do
+    {:reply, scrollbar_from_nif(Nif.nif_scrollbar(state.ref)), state}
+  end
+
+  def handle_call(:focus_reporting?, _from, state) do
+    {:reply, state.focus_reporting, state}
+  end
+
   def handle_call(:render_state, _from, state) do
     render_state =
       try do
@@ -401,7 +446,7 @@ defmodule Ghostty.Terminal do
         ErlangError -> fallback_render_state(state.ref)
       end
 
-    {:reply, {render_state, state.mouse_modes}, state}
+    {:reply, {render_state, state.mouse_modes, Nif.nif_scrollbar(state.ref), state.focus_reporting}, state}
   end
 
   def handle_call({:input_key, event}, _from, state) do
@@ -436,10 +481,12 @@ defmodule Ghostty.Terminal do
     Enum.reduce(@unsupported_private_modes, data, &:binary.replace(&2, &1, "", [:global]))
   end
 
-  defp render_state_from_nif({raw_render_state, mouse_modes}) do
+  defp render_state_from_nif({raw_render_state, mouse_modes, scrollbar_tuple, focus_reporting}) do
     raw_render_state
     |> render_state_from_nif_raw()
     |> Map.put(:mouse, mouse_modes_from_nif(mouse_modes))
+    |> Map.put(:scrollbar, scrollbar_from_nif(scrollbar_tuple))
+    |> Map.put(:focus_reporting, focus_reporting)
   end
 
   defp render_state_from_nif_raw({cells, cursor_tuple, _mouse_tuple}) do
@@ -454,6 +501,10 @@ defmodule Ghostty.Terminal do
     {x, y} = Nif.nif_get_cursor(ref)
 
     {Nif.nif_render_cells(ref), {true, x, y, true, false, :block, false, nil}, fallback_mouse_modes(ref)}
+  end
+
+  defp scrollbar_from_nif({total, offset, len}) do
+    %{total: total, offset: offset, len: len}
   end
 
   defp cursor_state_from_nif({has_position, x, y, visible, blinking, style, wide_tail, color}) do
@@ -491,6 +542,15 @@ defmodule Ghostty.Terminal do
     %{tracking: false, x10: false, normal: false, button: false, any: false, sgr: false}
   end
 
+  defp update_focus_reporting(focus_reporting, data) do
+    focus_reporting = if String.contains?(data, "\ec"), do: false, else: focus_reporting
+
+    Regex.scan(~r/\e\[\?1004(h|l)/, data)
+    |> Enum.reduce(focus_reporting, fn [_, value], _acc ->
+      value == "h"
+    end)
+  end
+
   defp update_mouse_modes(mouse_modes, data) do
     mouse_modes =
       if String.contains?(data, "\ec") do
@@ -514,6 +574,9 @@ defmodule Ghostty.Terminal do
   end
 
   defp normalize_mouse_modes(mouse_modes) do
-    %{mouse_modes | tracking: mouse_modes.x10 or mouse_modes.normal or mouse_modes.button or mouse_modes.any}
+    %{
+      mouse_modes
+      | tracking: mouse_modes.x10 or mouse_modes.normal or mouse_modes.button or mouse_modes.any
+    }
   end
 end

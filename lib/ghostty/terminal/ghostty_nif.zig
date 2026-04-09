@@ -421,6 +421,20 @@ fn dec_mode(value: u16) g.GhosttyMode {
     return g.ghostty_mode_new(value, false);
 }
 
+pub fn nif_scrollbar(res: TerminalResource) beam.term {
+    const t = res.unpack().terminal;
+    var scrollbar: g.GhosttyTerminalScrollbar = undefined;
+    _ = g.ghostty_terminal_get(t, g.GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar);
+    return beam.make(.{ scrollbar.total, scrollbar.offset, scrollbar.len }, .{});
+}
+
+pub fn nif_focus_mode(res: TerminalResource) bool {
+    const t = res.unpack().terminal;
+    var enabled: bool = false;
+    _ = g.ghostty_terminal_mode_get(t, dec_mode(1004), &enabled);
+    return enabled;
+}
+
 fn eql(a: []const u8, comptime b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }

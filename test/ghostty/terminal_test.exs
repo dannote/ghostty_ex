@@ -199,6 +199,94 @@ defmodule Ghostty.TerminalTest do
 
       GenServer.stop(term)
     end
+
+    test "includes scrollbar state" do
+      {:ok, term} = Terminal.start_link(cols: 10, rows: 3)
+
+      assert %{scrollbar: %{total: total, offset: offset, len: len}} =
+               Terminal.render_state(term)
+
+      assert is_integer(total) and total >= 0
+      assert is_integer(offset) and offset >= 0
+      assert is_integer(len) and len >= 0
+
+      GenServer.stop(term)
+    end
+
+    test "includes focus_reporting state" do
+      {:ok, term} = Terminal.start_link(cols: 10, rows: 2)
+      assert %{focus_reporting: false} = Terminal.render_state(term)
+
+      Terminal.write(term, "\e[?1004h")
+      assert %{focus_reporting: true} = Terminal.render_state(term)
+
+      GenServer.stop(term)
+    end
+  end
+
+  describe "scrollbar/1" do
+    test "returns scrollbar map with expected shape" do
+      {:ok, term} = Terminal.start_link(cols: 10, rows: 3)
+
+      scrollbar = Terminal.scrollbar(term)
+      assert %{total: total, offset: offset, len: len} = scrollbar
+      assert is_integer(total) and total >= 0
+      assert is_integer(offset) and offset >= 0
+      assert is_integer(len) and len >= 0
+
+      GenServer.stop(term)
+    end
+
+    test "scrollbar changes after writing enough lines to push into scrollback" do
+      {:ok, term} = Terminal.start_link(cols: 10, rows: 3, max_scrollback: 100)
+
+      initial = Terminal.scrollbar(term)
+
+      for i <- 1..20 do
+        Terminal.write(term, "Line #{i}\r\n")
+      end
+
+      after_write = Terminal.scrollbar(term)
+      assert after_write.total > initial.total
+
+      GenServer.stop(term)
+    end
+  end
+
+  describe "focus_reporting?/1" do
+    test "tracks focus reporting mode after enable sequence" do
+      {:ok, term} = Terminal.start_link()
+      refute Terminal.focus_reporting?(term)
+
+      Terminal.write(term, "\e[?1004h")
+      assert Terminal.focus_reporting?(term)
+
+      GenServer.stop(term)
+    end
+
+    test "tracks focus reporting mode after disable sequence" do
+      {:ok, term} = Terminal.start_link()
+
+      Terminal.write(term, "\e[?1004h")
+      assert Terminal.focus_reporting?(term)
+
+      Terminal.write(term, "\e[?1004l")
+      refute Terminal.focus_reporting?(term)
+
+      GenServer.stop(term)
+    end
+
+    test "reset clears focus reporting mode" do
+      {:ok, term} = Terminal.start_link()
+
+      Terminal.write(term, "\e[?1004h")
+      assert Terminal.focus_reporting?(term)
+
+      Terminal.reset(term)
+      refute Terminal.focus_reporting?(term)
+
+      GenServer.stop(term)
+    end
   end
 
   describe "scroll/2" do

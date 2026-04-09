@@ -28,11 +28,19 @@ export interface CursorState {
   color: Color | null
 }
 
+export interface ScrollbarState {
+  total: number
+  offset: number
+  len: number
+}
+
 export interface RenderPayload {
   id: string
   cells: Cell[][]
   cursor: CursorState
   mouse: MouseModes
+  scrollbar: ScrollbarState
+  focus_reporting: boolean
 }
 
 export interface CellMetrics {

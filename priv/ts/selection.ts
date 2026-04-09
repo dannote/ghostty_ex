@@ -44,7 +44,7 @@ export function selectedText(
       text += cell?.[0] || ' '
     }
 
-    lines.push(text)
+    lines.push(text.trimEnd())
   }
 
   return lines.join('\n')

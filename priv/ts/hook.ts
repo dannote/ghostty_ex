@@ -20,7 +20,15 @@ import { normalizeSelection, selectedText } from './selection'
 import { DEFAULT_MOUSE } from './types'
 import { clamp } from './util'
 
-import type { Cell, CellMetrics, CellPoint, CursorState, MouseModes, RenderPayload } from './types'
+import type {
+  Cell,
+  CellMetrics,
+  CellPoint,
+  CursorState,
+  MouseModes,
+  RenderPayload,
+  ScrollbarState
+} from './types'
 
 interface TerminalState {
   cols: number
@@ -30,6 +38,8 @@ interface TerminalState {
   rowsData: Cell[][]
   cursor: CursorState | null
   mouse: MouseModes
+  scrollbar: ScrollbarState | null
+  focusReporting: boolean
   focused: boolean
   composing: boolean
   cursorBlinkVisible: boolean
@@ -350,6 +360,8 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     this.rowsData = []
     this.cursor = null
     this.mouse = { ...DEFAULT_MOUSE }
+    this.scrollbar = null
+    this.focusReporting = false
     this.focused = false
     this.composing = false
     this.cursorBlinkVisible = true
@@ -580,7 +592,9 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       this.cursorBlinkVisible = true
       this.autofocusPending = false
       stopAutofocus(this)
-      pushHookEvent(this, 'focus', { focused: true })
+      if (this.focusReporting) {
+        pushHookEvent(this, 'focus', { focused: true })
+      }
       syncCursorBlink(this)
       doRenderCursor(this)
     }
@@ -592,7 +606,9 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
         this.autofocusPending = false
         stopAutofocus(this)
       }
-      pushHookEvent(this, 'focus', { focused: false })
+      if (this.focusReporting) {
+        pushHookEvent(this, 'focus', { focused: false })
+      }
       syncCursorBlink(this)
       doRenderCursor(this)
     }
@@ -632,6 +648,8 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       this.cols = payload.cells[0]?.length ?? this.cols
       this.rows = payload.cells.length || this.rows
       this.mouse = payload.mouse || { ...DEFAULT_MOUSE }
+      this.scrollbar = payload.scrollbar ?? null
+      this.focusReporting = payload.focus_reporting ?? false
       if (mouseModeActive(this)) {
         clearSelection(this)
       }

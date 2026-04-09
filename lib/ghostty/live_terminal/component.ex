@@ -160,7 +160,21 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
     end
 
     @impl true
-    def handle_event("focus", %{"focused" => _focused}, socket) do
+    def handle_event("focus", %{"focused" => focused}, socket) do
+      if focused and Ghostty.Terminal.focus_reporting?(socket.assigns.term) do
+        case Ghostty.LiveTerminal.handle_focus(true) do
+          {:ok, data} -> write_data(socket, data)
+          :none -> :ok
+        end
+      end
+
+      if not focused and Ghostty.Terminal.focus_reporting?(socket.assigns.term) do
+        case Ghostty.LiveTerminal.handle_focus(false) do
+          {:ok, data} -> write_data(socket, data)
+          :none -> :ok
+        end
+      end
+
       {:noreply, push_render(socket)}
     end
 

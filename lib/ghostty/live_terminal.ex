@@ -146,7 +146,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     @doc """
     Resizes the terminal and optional PTY to the given dimensions.
     """
-    @spec handle_resize(GenServer.server(), pos_integer(), pos_integer(), GenServer.server() | nil) :: :ok
+    @spec handle_resize(GenServer.server(), pos_integer(), pos_integer(), GenServer.server() | nil) ::
+            :ok
     def handle_resize(term, cols, rows, pty \\ nil) do
       Ghostty.Terminal.resize(term, cols, rows)
 
@@ -204,8 +205,17 @@ if Code.ensure_loaded?(Phoenix.Component) do
     """
     @spec render_payload(String.t(), GenServer.server()) :: map()
     def render_payload(id, term) do
-      %{cells: cells, cursor: cursor, mouse: mouse} = Ghostty.Terminal.render_state(term)
-      %{id: id, cells: cells_to_payload(cells), cursor: cursor |> Map.update!(:color, &color_to_list/1), mouse: mouse}
+      %{cells: cells, cursor: cursor, mouse: mouse, scrollbar: scrollbar, focus_reporting: focus_reporting} =
+        Ghostty.Terminal.render_state(term)
+
+      %{
+        id: id,
+        cells: cells_to_payload(cells),
+        cursor: cursor |> Map.update!(:color, &color_to_list/1),
+        mouse: mouse,
+        scrollbar: scrollbar,
+        focus_reporting: focus_reporting
+      }
     end
 
     @doc """

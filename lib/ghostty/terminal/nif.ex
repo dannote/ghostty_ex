@@ -34,6 +34,8 @@ defmodule Ghostty.Terminal.Nif do
       nif_encode_focus: 1,
       nif_render_cells: [arity: 1, concurrency: :dirty_cpu],
       nif_render_state: [arity: 1, concurrency: :dirty_cpu],
-      nif_mouse_modes: 1
+      nif_mouse_modes: 1,
+      nif_scrollbar: 1,
+      nif_focus_mode: 1
     ]
 end
