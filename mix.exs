@@ -119,7 +119,7 @@ defmodule Ghostty.MixProject do
 
   defp deps do
     [
-      {:zigler_precompiled, "~> 0.1.2"},
+      {:zigler_precompiled, "~> 0.1.3"},
       {:zigler, "~> 0.15.2", runtime: false, optional: true},
       {:phoenix_live_view, "~> 1.0", optional: true},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
