@@ -25,15 +25,15 @@ defmodule Ghostty.Terminal.Nif do
       nif_vt_write: 2,
       nif_resize: 3,
       nif_reset: 1,
-      nif_snapshot: 2,
+      nif_snapshot: [arity: 2, concurrency: :dirty_cpu],
       nif_scroll: 2,
       nif_get_cursor: 1,
       nif_set_effect_pid: 2,
       nif_encode_key: 6,
       nif_encode_mouse: 6,
       nif_encode_focus: 1,
-      nif_render_cells: 1,
-      nif_render_state: 1,
+      nif_render_cells: [arity: 1, concurrency: :dirty_cpu],
+      nif_render_state: [arity: 1, concurrency: :dirty_cpu],
       nif_mouse_modes: 1
     ]
 end

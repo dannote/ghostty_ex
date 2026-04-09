@@ -41,6 +41,7 @@ defmodule Ghostty.MixProject do
         "ex_dna",
         "cmd zlint lib/ghostty/terminal/ghostty_nif.zig lib/ghostty/pty_nif.zig"
       ],
+      "fuzz.sanity": "cmd --cd fuzz zig build test",
       ci: [
         "compile --warnings-as-errors",
         "format --check-formatted",
