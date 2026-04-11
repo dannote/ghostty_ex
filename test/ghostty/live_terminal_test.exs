@@ -88,7 +88,23 @@ defmodule Ghostty.LiveTerminalTest do
       assert %Ghostty.KeyEvent{key: :f1} = LiveTerminal.key_event_from_params(key_params("F1"))
     end
 
-    test "returns :none for unrecognized keys" do
+    test "parses punctuation keys" do
+      assert %Ghostty.KeyEvent{key: :minus, utf8: "-"} =
+               LiveTerminal.key_event_from_params(key_params("-"))
+
+      assert %Ghostty.KeyEvent{key: :semicolon, utf8: ";"} =
+               LiveTerminal.key_event_from_params(key_params(";"))
+    end
+
+    test "passes through shifted single-char keys with :unidentified" do
+      assert %Ghostty.KeyEvent{key: :unidentified, utf8: ":"} =
+               LiveTerminal.key_event_from_params(key_params(":"))
+
+      assert %Ghostty.KeyEvent{key: :unidentified, utf8: "!"} =
+               LiveTerminal.key_event_from_params(key_params("!"))
+    end
+
+    test "returns :none for multi-char unrecognized keys" do
       assert :none = LiveTerminal.key_event_from_params(key_params("Dead"))
       assert :none = LiveTerminal.key_event_from_params(key_params("Unidentified"))
       assert :none = LiveTerminal.key_event_from_params(key_params("AudioVolumeUp"))
@@ -138,7 +154,17 @@ defmodule Ghostty.LiveTerminalTest do
       end
     end
 
-    test "returns :none for unrecognized keys", %{term: term} do
+    test "encodes punctuation keys", %{term: term} do
+      assert {:ok, "-"} = LiveTerminal.handle_key(term, key_params("-"))
+      assert {:ok, "/"} = LiveTerminal.handle_key(term, key_params("/"))
+    end
+
+    test "encodes shifted single-char keys via utf8 passthrough", %{term: term} do
+      assert {:ok, ":"} = LiveTerminal.handle_key(term, key_params(":"))
+      assert {:ok, "!"} = LiveTerminal.handle_key(term, key_params("!"))
+    end
+
+    test "returns :none for multi-char unrecognized keys", %{term: term} do
       assert :none = LiveTerminal.handle_key(term, key_params("Dead"))
     end
 

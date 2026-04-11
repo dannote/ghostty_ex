@@ -72,7 +72,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     def key_event_from_params(%{"key" => key} = params) do
       ghostty_key = js_key_to_atom(key)
 
-      if ghostty_key == :unidentified do
+      if ghostty_key == :unidentified and String.length(key) != 1 do
         :none
       else
         %Ghostty.KeyEvent{
@@ -286,7 +286,18 @@ if Code.ensure_loaded?(Phoenix.Component) do
       "F9" => :f9,
       "F10" => :f10,
       "F11" => :f11,
-      "F12" => :f12
+      "F12" => :f12,
+      "-" => :minus,
+      "=" => :equal,
+      "[" => :bracket_left,
+      "]" => :bracket_right,
+      "\\" => :backslash,
+      ";" => :semicolon,
+      "'" => :quote,
+      "," => :comma,
+      "." => :period,
+      "/" => :slash,
+      "`" => :backquote
     }
 
     defp special_key(key), do: Map.get(@special_keys, key, :unidentified)

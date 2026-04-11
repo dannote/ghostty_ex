@@ -106,6 +106,7 @@ defmodule Ghostty.KeyEvent do
 
   # GhosttyKey enum values from key/event.h (0-indexed, sequential)
   @key_map %{
+    unidentified: 0,
     backquote: 1,
     backslash: 2,
     bracket_left: 3,
