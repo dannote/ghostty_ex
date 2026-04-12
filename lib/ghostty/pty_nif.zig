@@ -54,7 +54,7 @@ fn is_would_block(errno: c_int) bool {
     return errno == c.EAGAIN or errno == c.EWOULDBLOCK;
 }
 
-fn wait_for_fd(fd: c_int, events: c_short, timeout_ms: c_int) bool {
+fn wait_for_fd(fd: c_int, events: c_short, timeout_ms: c_int) c_short {
     var pfd: c.struct_pollfd = .{
         .fd = fd,
         .events = events,
@@ -64,10 +64,10 @@ fn wait_for_fd(fd: c_int, events: c_short, timeout_ms: c_int) bool {
     while (true) {
         const rc = c.poll(&pfd, 1, timeout_ms);
 
-        if (rc > 0) return true;
-        if (rc == 0) return false;
+        if (rc > 0) return pfd.revents;
+        if (rc == 0) return 0;
         if (get_errno() == c.EINTR) continue;
-        return false;
+        return 0;
     }
 }
 
@@ -75,23 +75,42 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
     var buf: [4096]u8 = undefined;
 
     while (!closed.load(.acquire)) {
-        if (!wait_for_fd(master_fd, c.POLLIN | c.POLLHUP | c.POLLERR, 100)) continue;
+        const revents = wait_for_fd(master_fd, c.POLLIN | c.POLLHUP | c.POLLERR, 100);
+        if (revents == 0) continue;
 
-        const n = c.read(master_fd, &buf, buf.len);
+        while (true) {
+            const n = c.read(master_fd, &buf, buf.len);
 
-        if (n > 0) {
-            const slice = buf[0..@intCast(n)];
-            const env = beam.alloc_env();
-            beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
-            beam.free_env(env);
-            continue;
-        }
+            if (n > 0) {
+                const slice = buf[0..@intCast(n)];
+                const env = beam.alloc_env();
+                beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
+                beam.free_env(env);
+                continue;
+            }
 
-        if (n < 0) {
-            const errno = get_errno();
-            if (errno == c.EINTR or is_would_block(errno)) continue;
+            if (n < 0) {
+                const errno = get_errno();
+                if (errno == c.EINTR) continue;
+                if (is_would_block(errno)) break;
 
-            if (errno == c.EIO) {
+                if (errno == c.EIO) {
+                    var status: c_int = 0;
+                    _ = c.waitpid(child_pid, &status, 0);
+
+                    if (!closed.load(.acquire)) {
+                        const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
+                        const env = beam.alloc_env();
+                        beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
+                        beam.free_env(env);
+                    }
+                    return;
+                }
+
+                return;
+            }
+
+            if (n == 0) {
                 var status: c_int = 0;
                 _ = c.waitpid(child_pid, &status, 0);
 
@@ -103,21 +122,6 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
                 }
                 return;
             }
-
-            return;
-        }
-
-        if (n == 0) {
-            var status: c_int = 0;
-            _ = c.waitpid(child_pid, &status, 0);
-
-            if (!closed.load(.acquire)) {
-                const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
-                const env = beam.alloc_env();
-                beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
-                beam.free_env(env);
-            }
-            return;
         }
     }
 }
