@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### LiveView
+
+- Add punctuation and shifted character key mappings
+
+### PTY
+
+- Fix UI hangs when typing fast by draining the PTY buffer fully on each poll wakeup
+- Handle POLLHUP/POLLERR without POLLIN to ensure exit notification is always sent
+
+### Internal
+
+- Remove unused `nif_focus_mode` NIF
+- Cache `nif_render_state` availability at compile time instead of try/rescue per call
+- Deduplicate PTY reader exit path into `send_exit_and_wait`
+- Remove redundant client-side input validation (kept in GenServer)
+- Remove self-delegating `mods_to_bitmask` in favour of `to_bitmask`
+
 ## 0.3.0 (2026-04-08)
 
 ### LiveView
