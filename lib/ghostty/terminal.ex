@@ -90,6 +90,9 @@ defmodule Ghostty.Terminal do
 
   @unsupported_private_modes ["\e[?1034h", "\e[?1034l"]
 
+  @has_render_state_nif function_exported?(Ghostty.Terminal.Nif, :nif_render_state, 1)
+
+  @enforce_keys [:ref]
   defstruct [:ref, :cols, :rows, :mouse_modes, :focus_reporting]
 
   @doc """
@@ -220,8 +223,6 @@ defmodule Ghostty.Terminal do
   Returns `{:ok, sequence}` with the bytes to send to the PTY,
   or `:none` if the key event produces no output.
 
-  Raises `ArgumentError` for invalid key names or actions.
-
   ## Examples
 
       Ghostty.Terminal.input_key(term, %Ghostty.KeyEvent{key: :enter})
@@ -233,9 +234,6 @@ defmodule Ghostty.Terminal do
   """
   @spec input_key(GenServer.server(), Ghostty.KeyEvent.t()) :: {:ok, binary()} | :none
   def input_key(terminal, %Ghostty.KeyEvent{} = event) do
-    Ghostty.KeyEvent.action_to_int(event.action)
-    Ghostty.KeyEvent.key_to_int(event.key)
-    Ghostty.Mods.to_bitmask(event.mods)
     GenServer.call(terminal, {:input_key, event})
   end
 
@@ -244,14 +242,9 @@ defmodule Ghostty.Terminal do
 
   Returns `{:ok, sequence}` or `:none` if mouse tracking is not
   enabled by the running program.
-
-  Raises `ArgumentError` for invalid button names or actions.
   """
   @spec input_mouse(GenServer.server(), Ghostty.MouseEvent.t()) :: {:ok, binary()} | :none
   def input_mouse(terminal, %Ghostty.MouseEvent{} = event) do
-    Ghostty.MouseEvent.action_to_int(event.action)
-    Ghostty.MouseEvent.button_to_int(event.button)
-    Ghostty.Mods.to_bitmask(event.mods)
     GenServer.call(terminal, {:input_mouse, event})
   end
 
@@ -439,14 +432,14 @@ defmodule Ghostty.Terminal do
   end
 
   def handle_call(:render_state, _from, state) do
-    render_state =
-      try do
+    raw =
+      if @has_render_state_nif do
         Nif.nif_render_state(state.ref)
-      rescue
-        ErlangError -> fallback_render_state(state.ref)
+      else
+        fallback_render_state(state.ref)
       end
 
-    {:reply, {render_state, state.mouse_modes, Nif.nif_scrollbar(state.ref), state.focus_reporting}, state}
+    {:reply, {raw, state.mouse_modes, Nif.nif_scrollbar(state.ref), state.focus_reporting}, state}
   end
 
   def handle_call({:input_key, event}, _from, state) do
@@ -455,7 +448,7 @@ defmodule Ghostty.Terminal do
         state.ref,
         Ghostty.KeyEvent.action_to_int(event.action),
         Ghostty.KeyEvent.key_to_int(event.key),
-        Ghostty.KeyEvent.mods_to_bitmask(event.mods),
+        Ghostty.Mods.to_bitmask(event.mods),
         event.utf8 || "",
         event.unshifted_codepoint || 0
       )
@@ -469,9 +462,9 @@ defmodule Ghostty.Terminal do
         state.ref,
         Ghostty.MouseEvent.action_to_int(event.action),
         Ghostty.MouseEvent.button_to_int(event.button),
-        Ghostty.MouseEvent.mods_to_bitmask(event.mods),
-        event.x / 1,
-        event.y / 1
+        Ghostty.Mods.to_bitmask(event.mods),
+        event.x,
+        event.y
       )
 
     {:reply, result, state}

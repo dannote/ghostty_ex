@@ -230,11 +230,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     defp mods_from_params(params) do
-      []
-      |> then(fn m -> if params["shiftKey"], do: [:shift | m], else: m end)
-      |> then(fn m -> if params["ctrlKey"], do: [:ctrl | m], else: m end)
-      |> then(fn m -> if params["altKey"], do: [:alt | m], else: m end)
-      |> then(fn m -> if params["metaKey"], do: [:super | m], else: m end)
+      for {key, mod} <- [{"shiftKey", :shift}, {"ctrlKey", :ctrl}, {"altKey", :alt}, {"metaKey", :super}],
+          params[key],
+          do: mod
     end
 
     defp color_to_list(nil), do: nil
@@ -316,7 +314,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     defp mouse_button_from_param(_button), do: :error
 
     defp float_from_param(value) when is_float(value), do: {:ok, value}
-    defp float_from_param(value) when is_integer(value), do: {:ok, value / 1}
+    defp float_from_param(value) when is_integer(value), do: {:ok, value * 1.0}
 
     defp float_from_param(value) when is_binary(value) do
       case Float.parse(value) do

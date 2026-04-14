@@ -71,6 +71,18 @@ fn wait_for_fd(fd: c_int, events: c_short, timeout_ms: c_int) bool {
     }
 }
 
+fn send_exit_and_wait(child_pid: c.pid_t, closed: *std.atomic.Value(bool), owner: beam.pid) void {
+    var status: c_int = 0;
+    _ = c.waitpid(child_pid, &status, 0);
+
+    if (!closed.load(.acquire)) {
+        const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
+        const env = beam.alloc_env();
+        beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
+        beam.free_env(env);
+    }
+}
+
 fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
     var buf: [4096]u8 = undefined;
 
@@ -92,15 +104,7 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
             if (errno == c.EINTR or is_would_block(errno)) continue;
 
             if (errno == c.EIO) {
-                var status: c_int = 0;
-                _ = c.waitpid(child_pid, &status, 0);
-
-                if (!closed.load(.acquire)) {
-                    const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
-                    const env = beam.alloc_env();
-                    beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
-                    beam.free_env(env);
-                }
+                send_exit_and_wait(child_pid, closed, owner);
                 return;
             }
 
@@ -108,15 +112,7 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
         }
 
         if (n == 0) {
-            var status: c_int = 0;
-            _ = c.waitpid(child_pid, &status, 0);
-
-            if (!closed.load(.acquire)) {
-                const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
-                const env = beam.alloc_env();
-                beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
-                beam.free_env(env);
-            }
+            send_exit_and_wait(child_pid, closed, owner);
             return;
         }
     }

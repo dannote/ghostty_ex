@@ -55,5 +55,5 @@ defmodule Ghostty.MouseEvent do
   end
 
   @doc false
-  defdelegate mods_to_bitmask(mods), to: Ghostty.Mods
+  defdelegate to_bitmask(mods), to: Ghostty.Mods
 end

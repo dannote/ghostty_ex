@@ -12,6 +12,4 @@ defmodule Ghostty.Mods do
       acc ||| bit
     end)
   end
-
-  defdelegate mods_to_bitmask(mods), to: __MODULE__, as: :to_bitmask
 end
