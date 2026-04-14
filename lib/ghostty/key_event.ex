@@ -13,7 +13,8 @@ defmodule Ghostty.KeyEvent do
   @type action :: :press | :release | :repeat
 
   @type key ::
-          :a
+          :unidentified
+          | :a
           | :b
           | :c
           | :d
