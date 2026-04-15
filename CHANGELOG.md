@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.3.1 (2026-04-14)
+## 0.3.2 (2026-04-14)
+
+### Fix
+
+- Fix precompiled NIF failing to load due to missing `nif_focus_mode` declaration
+
+## 0.3.1 (2026-04-14) [YANKED]
 
 ### LiveView
 
