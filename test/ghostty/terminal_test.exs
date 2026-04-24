@@ -1,6 +1,8 @@
 defmodule Ghostty.TerminalTest do
   use ExUnit.Case, async: true
 
+  import Ghostty.Test
+
   alias Ghostty.Terminal
 
   describe "start_link/1" do
@@ -80,20 +82,18 @@ defmodule Ghostty.TerminalTest do
 
   describe "snapshot/2" do
     test "returns plain text snapshot" do
-      {:ok, term} = Terminal.start_link(cols: 40, rows: 5)
-      Terminal.write(term, "Hello World!\r\nLine 2\r\n")
-      {:ok, text} = Terminal.snapshot(term)
-      assert text =~ "Hello World!"
-      assert text =~ "Line 2"
+      {:ok, term} = term(cols: 40, rows: 5)
+      write(term, "Hello World!\r\nLine 2\r\n")
+      assert_text(term, "Hello World!")
+      assert_text(term, "Line 2")
       GenServer.stop(term)
     end
 
     test "strips ANSI codes in plain format" do
-      {:ok, term} = Terminal.start_link(cols: 40, rows: 5)
-      Terminal.write(term, "\e[31mRed\e[0m \e[1mBold\e[0m\r\n")
-      {:ok, text} = Terminal.snapshot(term, :plain)
-      assert text =~ "Red Bold"
-      refute text =~ "\e["
+      {:ok, term} = term(cols: 40, rows: 5)
+      write(term, "\e[31mRed\e[0m \e[1mBold\e[0m\r\n")
+      assert_text(term, "Red Bold")
+      refute_text(term, "\e[")
       GenServer.stop(term)
     end
 

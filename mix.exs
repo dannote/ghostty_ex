@@ -12,7 +12,7 @@ defmodule Ghostty.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      dialyzer: [plt_add_apps: [], ignore_warnings: ".dialyzer_ignore.exs"],
+      dialyzer: [plt_add_apps: [:ex_unit, :mix], ignore_warnings: ".dialyzer_ignore.exs"],
       name: "Ghostty",
       description: "Terminal emulator library for the BEAM — libghostty-vt NIFs with OTP integration.",
       source_url: @source_url,
@@ -143,6 +143,7 @@ defmodule Ghostty.MixProject do
         lib/ghostty/key_event.ex
         lib/ghostty/mouse_event.ex
         lib/ghostty/pty.ex
+        lib/ghostty/test.ex
         lib/ghostty/pty_nif.ex
         lib/ghostty/pty_nif.zig
         lib/ghostty/live_terminal.ex
@@ -167,6 +168,7 @@ defmodule Ghostty.MixProject do
       groups_for_modules: [
         Core: [Ghostty, Ghostty.Terminal, Ghostty.PTY],
         "Cell & Events": [Ghostty.Terminal.Cell, Ghostty.KeyEvent, Ghostty.MouseEvent],
+        Testing: [Ghostty.Test],
         LiveView: [Ghostty.LiveTerminal, Ghostty.LiveTerminal.Component],
         Internal: [Ghostty.Terminal.Nif, Ghostty.PTY.Nif]
       ]

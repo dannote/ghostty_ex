@@ -222,6 +222,31 @@ for a complete runnable app with Playwright browser tests. It includes a control
 panel with preset commands, fit/banner toggles, and sets `TERM=xterm-256color`
 for colorized shell output.
 
+## ExUnit helpers
+
+`Ghostty.Test` provides concise test helpers without expanding the core
+`Ghostty.Terminal` API:
+
+```elixir
+defmodule MyTerminalTest do
+  use ExUnit.Case, async: true
+
+  import Ghostty.Test
+
+  test "renders output" do
+    {:ok, terminal} = term(cols: 80, rows: 24)
+
+    terminal
+    |> lines(["Hello", IO.ANSI.red(), "red", IO.ANSI.reset()])
+    |> assert_text("Hello")
+    |> refute_text("missing")
+    |> assert_snap("test/fixtures/terminal/basic.txt")
+  end
+end
+```
+
+Set `UPDATE_GHOSTTY_SNAPSHOTS=1` to rewrite snapshot fixture files.
+
 ## Examples
 
 See the [`examples/`](https://github.com/dannote/ghostty_ex/tree/master/examples) directory:
