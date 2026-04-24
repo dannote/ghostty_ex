@@ -20,7 +20,7 @@ defmodule Ghostty.TTY do
 
   use GenServer
 
-  alias Ghostty.TTY.KeyDecoder
+  alias Ghostty.KeyDecoder
 
   @escape_timeout 10
 

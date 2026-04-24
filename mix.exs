@@ -141,7 +141,7 @@ defmodule Ghostty.MixProject do
         lib/ghostty/terminal/cell.ex
         lib/ghostty/terminal.ex
         lib/ghostty/tty.ex
-        lib/ghostty/tty/key_decoder.ex
+        lib/ghostty/key_decoder.ex
         lib/ghostty/key_event.ex
         lib/ghostty/mouse_event.ex
         lib/ghostty/pty.ex
@@ -169,7 +169,7 @@ defmodule Ghostty.MixProject do
       source_ref: "v#{@version}",
       groups_for_modules: [
         Core: [Ghostty, Ghostty.Terminal, Ghostty.PTY, Ghostty.TTY],
-        "Cell & Events": [Ghostty.Terminal.Cell, Ghostty.KeyEvent, Ghostty.MouseEvent],
+        "Cell & Events": [Ghostty.Terminal.Cell, Ghostty.KeyEvent, Ghostty.MouseEvent, Ghostty.KeyDecoder],
         Testing: [Ghostty.Test],
         LiveView: [Ghostty.LiveTerminal, Ghostty.LiveTerminal.Component],
         Internal: [Ghostty.Terminal.Nif, Ghostty.PTY.Nif]

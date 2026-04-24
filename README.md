@@ -122,7 +122,7 @@ end
 ```
 
 `Ghostty.TTY` complements `Ghostty.PTY`: TTY is the current terminal; PTY is for
-child pseudo-terminals.
+child pseudo-terminals. Raw terminal bytes are decoded by `Ghostty.KeyDecoder`.
 
 ## PTY
 

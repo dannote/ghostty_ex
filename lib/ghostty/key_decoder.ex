@@ -1,6 +1,6 @@
-defmodule Ghostty.TTY.KeyDecoder do
+defmodule Ghostty.KeyDecoder do
   @moduledoc """
-  Decodes bytes read from a local terminal into `Ghostty.KeyEvent` values.
+  Decodes terminal input bytes into `Ghostty.KeyEvent` values.
 
   This decoder intentionally covers the portable baseline used by terminal apps:
   printable text, control keys, common CSI navigation keys, and Alt-modified

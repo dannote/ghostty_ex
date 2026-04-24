@@ -1,7 +1,7 @@
-defmodule Ghostty.TTY.KeyDecoderTest do
+defmodule Ghostty.KeyDecoderTest do
   use ExUnit.Case, async: true
 
-  alias Ghostty.TTY.KeyDecoder
+  alias Ghostty.KeyDecoder
 
   test "decodes navigation keys" do
     assert {:key, %{key: :arrow_left}} = KeyDecoder.decode("\e[D")
