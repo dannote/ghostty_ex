@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 (2026-04-24)
+
+### TTY
+
+- Add explicit current-terminal input backends with OTP raw mode on OTP 28+ and NIF fallback on older OTP releases
+- Require explicit `takeover: true` before the NIF backend stops OTP's shell reader
+- Route `Ghostty.TTY.write/2` through the active TTY backend so raw TTY sessions do not depend on OTP's shell writer
+
 ## 0.4.2 (2026-04-24)
 
 ### TTY

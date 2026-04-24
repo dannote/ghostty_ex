@@ -3,6 +3,9 @@ defmodule Ghostty.TTYE2ETest do
 
   alias Ghostty.PTY
 
+  @child_event_timeout_ms 3_000
+  @poll_interval_ms 20
+
   @tag :tmp_dir
   test "TTY receives raw key events inside a real PTY", %{tmp_dir: tmp_dir} do
     script = Path.join(tmp_dir, "tty_echo.exs")
@@ -27,7 +30,7 @@ defmodule Ghostty.TTYE2ETest do
   end
 
   defp wait_until(expected, output) do
-    deadline = System.monotonic_time(:millisecond) + 3_000
+    deadline = System.monotonic_time(:millisecond) + @child_event_timeout_ms
     collect_until(expected, output, deadline)
   end
 
@@ -42,7 +45,7 @@ defmodule Ghostty.TTYE2ETest do
         {:exit, status} ->
           flunk("PTY exited with status #{inspect(status)} before #{inspect(expected)}. Output:\n#{output}")
       after
-        20 ->
+        @poll_interval_ms ->
           if System.monotonic_time(:millisecond) < deadline do
             collect_until(expected, output, deadline)
           else
@@ -53,32 +56,33 @@ defmodule Ghostty.TTYE2ETest do
   end
 
   defp child_script do
-    ~S'''
-    {:ok, tty} = Ghostty.TTY.start_link(owner: self())
-    Ghostty.TTY.write(tty, "READY\r\n")
+    timeout_ms = @child_event_timeout_ms
+
+    """
+    {:ok, tty} = Ghostty.TTY.start_link(owner: self(), backend: :nif, takeover: true)
+    Ghostty.TTY.write(tty, "READY\\r\\n")
 
     loop = fn loop, seen ->
       waiting = if seen == [], do: "WAITING", else: "WAITING:again"
-      Ghostty.TTY.write(tty, [waiting, "\r\n"])
+      Ghostty.TTY.write(tty, [waiting, "\\r\\n"])
 
       receive do
         {Ghostty.TTY, ^tty, {:key, %Ghostty.KeyEvent{key: :c, mods: [:ctrl]}}} ->
-          Ghostty.TTY.write(tty, "GOT:ctrl-c\r\n")
+          Ghostty.TTY.write(tty, "GOT:ctrl-c\\r\\n")
 
         {Ghostty.TTY, ^tty, {:key, %Ghostty.KeyEvent{utf8: utf8}}} when is_binary(utf8) ->
-          Ghostty.TTY.write(tty, ["GOT:", utf8, "\r\n"])
+          Ghostty.TTY.write(tty, ["GOT:", utf8, "\\r\\n"])
           loop.(loop, [utf8 | seen])
 
-        other ->
-          Ghostty.TTY.write(tty, ["OTHER:", inspect(other), "\r\n"])
+        _other ->
           loop.(loop, seen)
       after
-        3_000 ->
-          Ghostty.TTY.write(tty, "TIMEOUT\r\n")
+        #{timeout_ms} ->
+          Ghostty.TTY.write(tty, "TIMEOUT\\r\\n")
       end
     end
 
     loop.(loop, [])
-    '''
+    """
   end
 end
