@@ -106,6 +106,24 @@ for row <- rows do
 end
 ```
 
+## Current terminal TTY
+
+Use `Ghostty.TTY` for local terminal applications that need raw keyboard input
+from the terminal running the BEAM process:
+
+```elixir
+{:ok, tty} = Ghostty.TTY.start_link()
+Ghostty.TTY.write(tty, [IO.ANSI.clear(), IO.ANSI.home(), "Ready"])
+
+receive do
+  {Ghostty.TTY, ^tty, {:key, %Ghostty.KeyEvent{key: :enter}}} -> :submitted
+  {Ghostty.TTY, ^tty, {:resize, cols, rows}} -> {cols, rows}
+end
+```
+
+`Ghostty.TTY` complements `Ghostty.PTY`: TTY is the current terminal; PTY is for
+child pseudo-terminals.
+
 ## PTY
 
 Run interactive programs in a real pseudo-terminal:
