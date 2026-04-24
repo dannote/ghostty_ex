@@ -80,8 +80,8 @@ defmodule Ghostty.TTY do
 
     owner = Keyword.fetch!(opts, :owner)
     ref = make_ref()
-    handle_sigwinch()
-    :ok = :gen_event.add_handler(:erl_signal_server, __MODULE__.Winch, {owner, self(), ref})
+    maybe_handle_sigwinch()
+    add_winch_handler(owner, self(), ref)
     {:ok, reader} = __MODULE__.Reader.start_link(self())
     {:ok, %__MODULE__{owner: owner, reader: reader, ref: ref}}
   rescue
@@ -132,9 +132,17 @@ defmodule Ghostty.TTY do
     start_interactive.({:noshell, :raw})
   end
 
-  defp handle_sigwinch do
-    set_signal = &:os.set_signal/2
-    set_signal.(:sigwinch, :handle)
+  defp maybe_handle_sigwinch do
+    :os.set_signal(:sigwinch, :handle)
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp add_winch_handler(owner, tty, ref) do
+    case :gen_event.add_handler(:erl_signal_server, __MODULE__.Winch, {owner, tty, ref}) do
+      :ok -> :ok
+      {:error, _reason} -> :ok
+    end
   end
 
   defp handle_data("\e", %__MODULE__{buffer: nil} = state) do

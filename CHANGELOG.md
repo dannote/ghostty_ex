@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-04-24)
+
+### TTY
+
+- Fix `Ghostty.TTY.start_link/1` on OTP runtimes that do not expose `:sigwinch` through `:os.set_signal/2`
+- Treat SIGWINCH registration as best-effort so current-terminal apps can still start when resize signals are unavailable
+
 ## 0.4.0 (2026-04-24)
 
 ### TTY
