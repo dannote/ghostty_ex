@@ -1,8 +1,8 @@
 [
-  {"Elixir.Ghostty.PTY.Nif-v0.3.2-x86_64-linux-gnu.so.tar.gz",
-   "sha256:87b01be924a76098b794e0a809469f9b8159dcb3236a151b200ebb09bdc3836b"},
-  {"Elixir.Ghostty.PTY.Nif-v0.3.2-aarch64-linux-gnu.so.tar.gz",
-   "sha256:b02137cda160c526bec70fe366162d61ac811309ee7388e87563e58523ac0c6d"},
-  {"Elixir.Ghostty.PTY.Nif-v0.3.2-aarch64-macos-none.so.tar.gz",
-   "sha256:5f32b2f89dfd89e0668163da17cde9ab61fd223853c3be7a660272d5d74bbc76"}
+  {"Elixir.Ghostty.PTY.Nif-v0.4.0-x86_64-linux-gnu.so.tar.gz",
+   "sha256:04409dfc8e89a993adfbbae609cf0aa713a451836a80ca5ea0a5f136a2609233"},
+  {"Elixir.Ghostty.PTY.Nif-v0.4.0-aarch64-linux-gnu.so.tar.gz",
+   "sha256:6f4eddc6dd62865914dc260a8d4dae8c8209f52622aa670c63fdb80c432e6691"},
+  {"Elixir.Ghostty.PTY.Nif-v0.4.0-aarch64-macos-none.so.tar.gz",
+   "sha256:4e8e976559d0aaa68c5d1e36f90fe06169b85ae5cd5de25cdfa11bb38f4a40dc"}
 ]
