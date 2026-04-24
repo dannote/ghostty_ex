@@ -23,17 +23,24 @@ Elixir → GenServer (`Terminal`) → Zig NIFs (`ghostty_nif.zig`) → libghostt
 
 PTY support is separate: `Ghostty.PTY` wraps a real PTY NIF built from `pty_nif.zig`.
 
+Current-terminal support is separate: `Ghostty.TTY` adapts the terminal running the BEAM process and emits `Ghostty.KeyEvent` values decoded by `Ghostty.KeyDecoder`.
+
+Test helpers are separate: `Ghostty.Test` contains ExUnit ergonomics and should not bloat the production `Ghostty.Terminal` API.
+
 - `lib/ghostty.ex` — top-level module doc
 - `lib/ghostty/terminal.ex` — GenServer, public API
 - `lib/ghostty/terminal/nif.ex` — ZiglerPrecompiled NIF declaration
 - `lib/ghostty/terminal/ghostty_nif.zig` — terminal NIF implementation (C API bindings)
 - `lib/ghostty/terminal/cell.ex` — cell flag helpers
 - `lib/ghostty/key_event.ex` — keyboard input struct + key code mapping
+- `lib/ghostty/key_decoder.ex` — terminal input bytes → `Ghostty.KeyEvent`
 - `lib/ghostty/mouse_event.ex` — mouse input struct
+- `lib/ghostty/tty.ex` — current terminal raw-input adapter for local terminal apps
 - `lib/ghostty/pty.ex` — real PTY wrapper and supervision integration
 - `lib/ghostty/pty_nif.ex` — PTY Zig NIF declaration
 - `lib/ghostty/pty_nif.zig` — PTY NIF implementation
 - `lib/ghostty/live_terminal.ex` — optional LiveView integration
+- `lib/ghostty/test.ex` — ExUnit helpers for terminal snapshots/assertions/key driving
 - `lib/mix/tasks/ghostty.setup.ex` — builds libghostty-vt from source
 
 ## Adding a NIF

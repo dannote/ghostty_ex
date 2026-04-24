@@ -10,7 +10,7 @@ full Unicode, 24-bit color, scrollback with text reflow. Terminals are GenServer
 
 ```elixir
 def deps do
-  [{:ghostty, "~> 0.2"}]
+  [{:ghostty, "~> 0.4"}]
 end
 ```
 

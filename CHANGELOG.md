@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0 (2026-04-24)
+
+### TTY
+
+- Add `Ghostty.TTY` for local terminal applications that need raw keyboard input from the current BEAM terminal
+- Add `Ghostty.KeyDecoder` for decoding terminal input bytes into `Ghostty.KeyEvent` values
+- Add `examples/tty_keys.exs` as an interactive smoke test for current-terminal input, resize events, and key decoding
+
+### Testing
+
+- Add `Ghostty.Test` ExUnit helpers for concise terminal tests: `term/1`, `write/2`, `lines/2`, snapshots, text assertions, key encoding, and cell assertions
+- Add snapshot assertion support via `assert_snap/3` with `UPDATE_GHOSTTY_SNAPSHOTS=1`
+- Dogfood `Ghostty.Test` in terminal and cell tests
+
+### Terminal
+
+- Return `{:error, :invalid_key_event}` for invalid keyboard events instead of crashing the terminal GenServer
+- Return `{:error, :invalid_mouse_event}` for invalid mouse events instead of crashing the terminal GenServer
+
+### Docs
+
+- Document `Ghostty.TTY` and ExUnit helpers in the README
+- Add `Ghostty.TTY`, `Ghostty.KeyDecoder`, and `Ghostty.Test` to HexDocs groups and package files
+
 ## 0.3.2 (2026-04-14)
 
 ### Fix
