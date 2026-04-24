@@ -1,6 +1,8 @@
 defmodule Ghostty.Terminal.CellTest do
   use ExUnit.Case, async: true
 
+  import Ghostty.Test
+
   alias Ghostty.Terminal
   alias Ghostty.Terminal.Cell
 
@@ -17,28 +19,24 @@ defmodule Ghostty.Terminal.CellTest do
     end
 
     test "cell contains grapheme text" do
-      {:ok, term} = Terminal.start_link(cols: 10, rows: 3)
-      Terminal.write(term, "AB")
-      [[a, b | _] | _] = Terminal.cells(term)
-      assert Cell.grapheme(a) == "A"
-      assert Cell.grapheme(b) == "B"
+      {:ok, term} = term(cols: 10, rows: 3)
+      write(term, "AB")
+      assert_cell(term, {0, 0}, "A")
+      assert_cell(term, {1, 0}, "B")
       GenServer.stop(term)
     end
 
     test "cell flags for bold text" do
-      {:ok, term} = Terminal.start_link(cols: 20, rows: 3)
-      Terminal.write(term, "\e[1mBold\e[0m")
-      [[cell | _] | _] = Terminal.cells(term)
-      assert Cell.bold?(cell)
-      refute Cell.italic?(cell)
+      {:ok, term} = term(cols: 20, rows: 3)
+      write(term, "\e[1mBold\e[0m")
+      assert_cell(term, {0, 0}, "B", bold?: true, italic?: false)
       GenServer.stop(term)
     end
 
     test "colored text has fg color" do
-      {:ok, term} = Terminal.start_link(cols: 20, rows: 3)
-      Terminal.write(term, "\e[38;2;255;0;128mX\e[0m")
-      [[cell | _] | _] = Terminal.cells(term)
-      assert Cell.fg(cell) == {255, 0, 128}
+      {:ok, term} = term(cols: 20, rows: 3)
+      write(term, "\e[38;2;255;0;128mX\e[0m")
+      assert_cell(term, {0, 0}, "X", fg: {255, 0, 128})
       GenServer.stop(term)
     end
 

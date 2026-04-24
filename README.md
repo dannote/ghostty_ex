@@ -123,6 +123,7 @@ end
 
 `Ghostty.TTY` complements `Ghostty.PTY`: TTY is the current terminal; PTY is for
 child pseudo-terminals. Raw terminal bytes are decoded by `Ghostty.KeyDecoder`.
+See `examples/tty_keys.exs` for an interactive smoke test.
 
 ## PTY
 

@@ -22,11 +22,25 @@ defmodule Ghostty.TestTest do
     assert_snap(terminal, @fixture)
   end
 
-  test "encodes key events" do
+  test "asserts html, vt, and cells" do
+    {:ok, terminal} = term(cols: 20, rows: 4)
+    write(terminal, [IO.ANSI.red(), "R", IO.ANSI.reset(), "\r\n"])
+
+    terminal
+    |> assert_html("R")
+    |> assert_vt("R")
+    |> assert_cell({0, 0}, "R", fg: {204, 102, 102})
+  end
+
+  test "encodes and writes key events" do
     {:ok, terminal} = term()
 
     assert {:ok, bytes} = key(terminal, :enter)
     assert is_binary(bytes)
     assert key_bytes(:enter) == bytes
+
+    terminal
+    |> write_key(:a, utf8: "a")
+    |> assert_text("a")
   end
 end

@@ -444,28 +444,38 @@ defmodule Ghostty.Terminal do
 
   def handle_call({:input_key, event}, _from, state) do
     result =
-      Nif.nif_encode_key(
-        state.ref,
-        Ghostty.KeyEvent.action_to_int(event.action),
-        Ghostty.KeyEvent.key_to_int(event.key),
-        Ghostty.Mods.to_bitmask(event.mods),
-        event.utf8 || "",
-        event.unshifted_codepoint || 0
-      )
+      with {:ok, action} <- Ghostty.KeyEvent.action_to_int(event.action),
+           {:ok, key} <- Ghostty.KeyEvent.key_to_int(event.key) do
+        Nif.nif_encode_key(
+          state.ref,
+          action,
+          key,
+          Ghostty.Mods.to_bitmask(event.mods),
+          event.utf8 || "",
+          event.unshifted_codepoint || 0
+        )
+      else
+        :error -> {:error, :invalid_key_event}
+      end
 
     {:reply, result, state}
   end
 
   def handle_call({:input_mouse, event}, _from, state) do
     result =
-      Nif.nif_encode_mouse(
-        state.ref,
-        Ghostty.MouseEvent.action_to_int(event.action),
-        Ghostty.MouseEvent.button_to_int(event.button),
-        Ghostty.Mods.to_bitmask(event.mods),
-        event.x,
-        event.y
-      )
+      with {:ok, action} <- Ghostty.MouseEvent.action_to_int(event.action),
+           {:ok, button} <- Ghostty.MouseEvent.button_to_int(event.button) do
+        Nif.nif_encode_mouse(
+          state.ref,
+          action,
+          button,
+          Ghostty.Mods.to_bitmask(event.mods),
+          event.x,
+          event.y
+        )
+      else
+        :error -> {:error, :invalid_mouse_event}
+      end
 
     {:reply, result, state}
   end

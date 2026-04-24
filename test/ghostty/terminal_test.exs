@@ -347,22 +347,16 @@ defmodule Ghostty.TerminalTest do
       GenServer.stop(term)
     end
 
-    test "exits on unknown key" do
-      Process.flag(:trap_exit, true)
+    test "returns an error for unknown key" do
       {:ok, term} = Terminal.start_link()
-
-      catch_exit do
-        Terminal.input_key(term, %Ghostty.KeyEvent{key: :nonexistent})
-      end
+      assert {:error, :invalid_key_event} = Terminal.input_key(term, %Ghostty.KeyEvent{key: :nonexistent})
+      GenServer.stop(term)
     end
 
-    test "exits on unknown action" do
-      Process.flag(:trap_exit, true)
+    test "returns an error for unknown action" do
       {:ok, term} = Terminal.start_link()
-
-      catch_exit do
-        Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, action: :bogus})
-      end
+      assert {:error, :invalid_key_event} = Terminal.input_key(term, %Ghostty.KeyEvent{key: :a, action: :bogus})
+      GenServer.stop(term)
     end
   end
 
@@ -381,13 +375,10 @@ defmodule Ghostty.TerminalTest do
       GenServer.stop(term)
     end
 
-    test "exits on unknown button" do
-      Process.flag(:trap_exit, true)
+    test "returns an error for unknown button" do
       {:ok, term} = Terminal.start_link()
-
-      catch_exit do
-        Terminal.input_mouse(term, %Ghostty.MouseEvent{button: :nonexistent})
-      end
+      assert {:error, :invalid_mouse_event} = Terminal.input_mouse(term, %Ghostty.MouseEvent{button: :nonexistent})
+      GenServer.stop(term)
     end
   end
 

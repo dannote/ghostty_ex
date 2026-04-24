@@ -41,18 +41,12 @@ defmodule Ghostty.MouseEvent do
   @button_map %{left: 1, right: 2, middle: 3, four: 4, five: 5}
 
   @doc false
-  def action_to_int(action) do
-    Map.get(@action_map, action) ||
-      raise ArgumentError, "unknown mouse action: #{inspect(action)}"
-  end
+  def action_to_int(action), do: Map.fetch(@action_map, action)
 
   @doc false
-  def button_to_int(nil), do: 0
+  def button_to_int(nil), do: {:ok, 0}
 
-  def button_to_int(button) do
-    Map.get(@button_map, button) ||
-      raise ArgumentError, "unknown mouse button: #{inspect(button)}"
-  end
+  def button_to_int(button), do: Map.fetch(@button_map, button)
 
   @doc false
   defdelegate to_bitmask(mods), to: Ghostty.Mods

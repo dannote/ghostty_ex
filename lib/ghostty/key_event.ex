@@ -187,16 +187,10 @@ defmodule Ghostty.KeyEvent do
   @action_map %{release: 0, press: 1, repeat: 2}
 
   @doc false
-  def action_to_int(action) do
-    Map.get(@action_map, action) ||
-      raise ArgumentError, "unknown key action: #{inspect(action)}"
-  end
+  def action_to_int(action), do: Map.fetch(@action_map, action)
 
   @doc false
-  def key_to_int(key) do
-    Map.get(@key_map, key) ||
-      raise ArgumentError, "unknown key: #{inspect(key)}"
-  end
+  def key_to_int(key), do: Map.fetch(@key_map, key)
 
   @doc false
   defdelegate to_bitmask(mods), to: Ghostty.Mods

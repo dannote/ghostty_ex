@@ -18,6 +18,7 @@ defmodule Ghostty.Test do
   import ExUnit.Assertions
 
   alias Ghostty.{KeyEvent, Terminal}
+  alias Ghostty.Terminal.Cell
 
   @type terminal :: GenServer.server()
   @type snapshot_source :: terminal() | binary()
@@ -86,6 +87,69 @@ defmodule Ghostty.Test do
     end
 
     source
+  end
+
+  @doc "Asserts against an HTML snapshot."
+  @spec assert_html(terminal(), String.t() | Regex.t()) :: terminal()
+  def assert_html(term, expected) do
+    assert_text(html(term), expected)
+    term
+  end
+
+  @doc "Refutes against an HTML snapshot."
+  @spec refute_html(terminal(), String.t() | Regex.t()) :: terminal()
+  def refute_html(term, expected) do
+    refute_text(html(term), expected)
+    term
+  end
+
+  @doc "Asserts against a VT snapshot."
+  @spec assert_vt(terminal(), String.t() | Regex.t()) :: terminal()
+  def assert_vt(term, expected) do
+    assert_text(vt(term), expected)
+    term
+  end
+
+  @doc "Refutes against a VT snapshot."
+  @spec refute_vt(terminal(), String.t() | Regex.t()) :: terminal()
+  def refute_vt(term, expected) do
+    refute_text(vt(term), expected)
+    term
+  end
+
+  @doc "Returns the cell at `{x, y}` using zero-based coordinates."
+  @spec cell(terminal(), {non_neg_integer(), non_neg_integer()}) :: Terminal.cell()
+  def cell(term, {x, y}) do
+    term
+    |> cells()
+    |> Enum.at(y)
+    |> Enum.at(x)
+  end
+
+  @doc "Asserts a cell's grapheme and optional style properties."
+  @spec assert_cell(terminal(), {non_neg_integer(), non_neg_integer()}, binary(), keyword()) :: terminal()
+  def assert_cell(term, position, grapheme, opts \\ []) do
+    cell = cell(term, position)
+    assert Cell.grapheme(cell) == grapheme
+
+    Enum.each(opts, fn
+      {:fg, color} -> assert Cell.fg(cell) == color
+      {:bg, color} -> assert Cell.bg(cell) == color
+      {:bold?, expected} -> assert Cell.bold?(cell) == expected
+      {:italic?, expected} -> assert Cell.italic?(cell) == expected
+      {:underline?, expected} -> assert Cell.underline?(cell) == expected
+    end)
+
+    term
+  end
+
+  @doc "Encodes a key and writes the resulting bytes to the terminal."
+  @spec write_key(terminal(), KeyEvent.key() | KeyEvent.t(), keyword()) :: terminal()
+  def write_key(term, key_or_event, opts \\ []) do
+    case key(term, key_or_event, opts) do
+      {:ok, bytes} -> write(term, bytes)
+      :none -> term
+    end
   end
 
   @doc """
