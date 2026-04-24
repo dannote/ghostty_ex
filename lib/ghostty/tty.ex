@@ -15,12 +15,13 @@ defmodule Ghostty.TTY do
       {Ghostty.TTY, tty, {:resize, cols, rows}}
       {Ghostty.TTY, tty, :eof}
 
-  This module uses OTP terminal facilities rather than shelling out to `stty`.
+  This module owns terminal mode setup and restore so applications do not need
+  local raw-terminal adapters.
   """
 
   use GenServer
 
-  alias Ghostty.KeyDecoder
+  alias Ghostty.{KeyDecoder, Terminal.Nif}
 
   @escape_timeout 10
 
@@ -34,8 +35,9 @@ defmodule Ghostty.TTY do
           {:owner, pid()}
           | {:name, GenServer.name()}
           | {:raw, boolean()}
+          | {:disable_otp_reader, boolean()}
 
-  defstruct [:owner, :reader, :ref, buffer: nil]
+  defstruct [:owner, :ref, :terminal, :otp_reader, buffer: nil]
 
   @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -76,14 +78,12 @@ defmodule Ghostty.TTY do
 
   @impl true
   def init(opts) do
-    if Keyword.get(opts, :raw, true), do: start_raw_shell()
-
     owner = Keyword.fetch!(opts, :owner)
     ref = make_ref()
-    maybe_handle_sigwinch()
     add_winch_handler(owner, self(), ref)
-    {:ok, reader} = __MODULE__.Reader.start_link(self())
-    {:ok, %__MODULE__{owner: owner, reader: reader, ref: ref}}
+    terminal = start_terminal(opts)
+    otp_reader = disable_otp_reader(opts)
+    {:ok, %__MODULE__{owner: owner, ref: ref, terminal: terminal, otp_reader: otp_reader}}
   rescue
     exception -> {:stop, Exception.message(exception)}
   catch
@@ -92,18 +92,29 @@ defmodule Ghostty.TTY do
 
   @impl true
   def terminate(_reason, state) do
-    if state.reader, do: Process.exit(state.reader, :kill)
+    if state.terminal do
+      Nif.nif_tty_close(state.terminal)
+    end
+
+    enable_otp_reader(state.otp_reader)
     :ok
   end
 
   @impl true
-  def handle_call({:write, data}, _from, state) do
+  def handle_call({:write, data}, _from, %{terminal: nil} = state) do
     IO.write(data)
     {:reply, :ok, state}
   end
 
+  def handle_call({:write, data}, _from, state) do
+    Nif.nif_tty_write(state.terminal, data)
+    {:reply, :ok, state}
+  end
+
   @impl true
-  def handle_info({:tty_data, :eof}, state) do
+  def handle_info({:tty_ready}, state), do: {:noreply, state}
+
+  def handle_info({:tty_eof}, state) do
     send_event(state, :eof)
     {:noreply, state}
   end
@@ -127,15 +138,44 @@ defmodule Ghostty.TTY do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp start_raw_shell do
-    start_interactive = &:shell.start_interactive/1
-    start_interactive.({:noshell, :raw})
+  defp start_terminal(opts) do
+    if Keyword.get(opts, :raw, true) do
+      signals = Keyword.get(opts, :signals, false)
+      terminal = Nif.nif_tty_open(self(), signals)
+      wait_until_reader_ready()
+      terminal
+    end
   end
 
-  defp maybe_handle_sigwinch do
-    :os.set_signal(:sigwinch, :handle)
+  defp disable_otp_reader(opts) do
+    if Keyword.get(opts, :raw, true) and Keyword.get(opts, :disable_otp_reader, true) do
+      case Process.whereis(:user_drv_reader) do
+        pid when is_pid(pid) -> pause_otp_reader(pid)
+        _ -> nil
+      end
+    end
+  end
+
+  defp pause_otp_reader(pid) do
+    unregister_otp_reader()
+    Process.exit(pid, :shutdown)
+    nil
+  end
+
+  defp unregister_otp_reader do
+    :erlang.unregister(:user_drv_reader)
   rescue
     ArgumentError -> :ok
+  end
+
+  defp enable_otp_reader(_pid), do: :ok
+
+  defp wait_until_reader_ready do
+    receive do
+      {:tty_ready} -> :ok
+    after
+      1_000 -> raise "TTY reader did not start"
+    end
   end
 
   defp add_winch_handler(owner, tty, ref) do
@@ -190,36 +230,13 @@ defmodule Ghostty.TTY do
   defp ss3_final_byte?(_byte), do: false
 end
 
-defmodule Ghostty.TTY.Reader do
-  @moduledoc false
-
-  use GenServer
-
-  @spec start_link(pid()) :: GenServer.on_start()
-  def start_link(parent), do: GenServer.start_link(__MODULE__, parent)
-
-  @impl true
-  def init(parent), do: {:ok, parent, {:continue, :read}}
-
-  @impl true
-  def handle_continue(:read, parent) do
-    case IO.getn("") do
-      :eof -> send(parent, {:tty_data, :eof})
-      {:error, _reason} -> :ok
-      data when is_binary(data) -> send(parent, {:tty_data, data})
-    end
-
-    {:noreply, parent, {:continue, :read}}
-  end
-end
-
 defmodule Ghostty.TTY.Winch do
   @moduledoc false
 
   @behaviour :gen_event
 
   @impl true
-  def init({owner, tty, ref}), do: {:ok, %{owner: owner, tty: tty, ref: ref}}
+  def init({_owner, tty, ref}), do: {:ok, %{tty: tty, ref: ref}}
 
   @impl true
   def handle_event(:sigwinch, state) do

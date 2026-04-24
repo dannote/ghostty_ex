@@ -48,6 +48,9 @@ jobs:
             done
           done
 
+          echo "LD_LIBRARY_PATH=$PWD/_build/dev/lib/ghostty/priv/lib:$PWD/_build/test/lib/ghostty/priv/lib" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$PWD/_build/dev/lib/ghostty/priv/lib:$PWD/_build/test/lib/ghostty/priv/lib" >> "$GITHUB_ENV"
+
       - run: mix deps.get
       - run: GHOSTTY_BUILD=1 mix compile --warnings-as-errors
       - run: mix format --check-formatted

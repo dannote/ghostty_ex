@@ -1,7 +1,15 @@
 const beam = @import("beam");
 const root = @import("root");
 const std = @import("std");
+const builtin = @import("builtin");
 const g = @cImport(@cInclude("ghostty/vt.h"));
+const c = @cImport({
+    @cInclude("errno.h");
+    @cInclude("fcntl.h");
+    @cInclude("poll.h");
+    @cInclude("termios.h");
+    @cInclude("unistd.h");
+});
 
 const TerminalData = struct {
     terminal: g.GhosttyTerminal,
@@ -17,6 +25,185 @@ pub const TerminalCallbacks = struct {
         g.ghostty_terminal_free(data.terminal);
     }
 };
+
+
+const TtyData = struct {
+    fd: c_int,
+    write_fd: c_int,
+    original: c.struct_termios,
+    owner_pid: beam.pid,
+    closed: std.atomic.Value(bool),
+};
+
+pub const TtyResource = beam.Resource(TtyData, root, .{
+    .Callbacks = TtyCallbacks,
+});
+
+pub const TtyCallbacks = struct {
+    pub fn dtor(data: *TtyData) void {
+        tty_close(data);
+    }
+};
+
+fn get_errno() c_int {
+    if (comptime builtin.os.tag == .macos)
+        return c.__error().*
+    else
+        return c.__errno_location().*;
+}
+
+fn is_would_block(errno: c_int) bool {
+    return errno == c.EAGAIN or errno == c.EWOULDBLOCK;
+}
+
+fn tty_wait_for_input(fd: c_int, timeout_ms: c_int) c_short {
+    var pfd: c.struct_pollfd = .{
+        .fd = fd,
+        .events = c.POLLIN | c.POLLHUP | c.POLLERR,
+        .revents = 0,
+    };
+
+    while (true) {
+        const rc = c.poll(&pfd, 1, timeout_ms);
+
+        if (rc > 0) return pfd.revents;
+        if (rc == 0) return 0;
+        if (get_errno() == c.EINTR) continue;
+        return 0;
+    }
+}
+
+fn tty_close(data: anytype) void {
+    const closed_ptr = @constCast(&data.closed);
+    if (closed_ptr.swap(true, .acq_rel)) return;
+    _ = c.tcsetattr(data.fd, c.TCSANOW, &data.original);
+    _ = c.close(data.fd);
+    if (data.write_fd != data.fd) _ = c.close(data.write_fd);
+}
+
+fn tty_reader_loop(fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
+    var buf: [4096]u8 = undefined;
+
+    const ready_env = beam.alloc_env();
+    beam.send(owner, .{ .tty_ready }, .{ .env = ready_env }) catch {};
+    beam.free_env(ready_env);
+
+    while (!closed.load(.acquire)) {
+        const revents = tty_wait_for_input(fd, 100);
+        if (revents == 0) continue;
+
+        if (revents & c.POLLIN != 0) {
+            while (!closed.load(.acquire)) {
+                const n = c.read(fd, &buf, buf.len);
+
+                if (n > 0) {
+                    const slice = buf[0..@intCast(n)];
+                    const env = beam.alloc_env();
+                    beam.send(owner, .{ .tty_data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
+                    beam.free_env(env);
+                    continue;
+                }
+
+                if (n < 0) {
+                    const errno = get_errno();
+                    if (errno == c.EINTR) continue;
+                    if (is_would_block(errno)) break;
+                    return;
+                }
+
+                const env = beam.alloc_env();
+                beam.send(owner, .{ .tty_eof }, .{ .env = env }) catch {};
+                beam.free_env(env);
+                return;
+            }
+        }
+
+        if (revents & (c.POLLHUP | c.POLLERR) != 0 and revents & c.POLLIN == 0) {
+            const env = beam.alloc_env();
+            beam.send(owner, .{ .tty_eof }, .{ .env = env }) catch {};
+            beam.free_env(env);
+            return;
+        }
+    }
+}
+
+fn tty_make_raw(original: c.struct_termios, signals: bool) c.struct_termios {
+    var raw = original;
+
+    c.cfmakeraw(&raw);
+    if (signals) raw.c_lflag |= c.ISIG;
+    raw.c_cc[c.VMIN] = 1;
+    raw.c_cc[c.VTIME] = 0;
+
+    return raw;
+}
+
+pub fn nif_tty_open(owner: beam.pid, signals: bool) !TtyResource {
+    const fd = c.dup(c.STDIN_FILENO);
+    if (fd < 0) return error.tty_open_failed;
+
+    const write_fd = c.dup(c.STDOUT_FILENO);
+    if (write_fd < 0) {
+        _ = c.close(fd);
+        return error.tty_open_failed;
+    }
+
+    const flags = c.fcntl(fd, c.F_GETFL);
+    if (flags >= 0) _ = c.fcntl(fd, c.F_SETFL, flags | @as(c_int, c.O_NONBLOCK));
+
+    // SAFETY: initialized by tcgetattr below before it is read.
+    var original: c.struct_termios = undefined;
+    if (c.tcgetattr(fd, &original) != 0) {
+        _ = c.close(fd);
+        _ = c.close(write_fd);
+        return error.tcgetattr_failed;
+    }
+
+    var raw = tty_make_raw(original, signals);
+    if (c.tcsetattr(fd, c.TCSANOW, &raw) != 0) {
+        _ = c.close(fd);
+        _ = c.close(write_fd);
+        return error.tcsetattr_failed;
+    }
+
+    const res = try TtyResource.create(.{
+        .fd = fd,
+        .write_fd = write_fd,
+        .original = original,
+        .owner_pid = owner,
+        .closed = std.atomic.Value(bool).init(false),
+    }, .{});
+
+    const data = res.unpack();
+    const closed_ptr = @constCast(&data.closed);
+    const thread = std.Thread.spawn(.{}, tty_reader_loop, .{ fd, owner, closed_ptr }) catch
+        return error.thread_spawn_failed;
+    thread.detach();
+
+    return res;
+}
+
+pub fn nif_tty_write(res: TtyResource, data: []const u8) void {
+    const tty = res.unpack();
+    if (tty.closed.load(.acquire)) return;
+
+    var off: usize = 0;
+    while (off < data.len and !tty.closed.load(.acquire)) {
+        const n = c.write(tty.write_fd, data.ptr + off, data.len - off);
+
+        if (n > 0) {
+            off += @intCast(n);
+            continue;
+        }
+
+        if (n < 0 and get_errno() == c.EINTR) continue;
+        break;
+    }
+}
+
+pub fn nif_tty_close(res: TtyResource) void {
+    tty_close(res.unpack());
+}
 
 fn on_write_pty(terminal: g.GhosttyTerminal, userdata: ?*anyopaque, data_ptr: [*c]const u8, len: usize) callconv(.c) void {
     _ = terminal;

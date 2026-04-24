@@ -1,7 +1,7 @@
 defmodule Ghostty.MixProject do
   use Mix.Project
 
-  @version "0.4.1"
+  @version "0.4.2"
   @source_url "https://github.com/dannote/ghostty_ex"
 
   def project do
@@ -81,7 +81,7 @@ defmodule Ghostty.MixProject do
           File.cp!(Path.join(src_lib, file), Path.join(dest_lib, file))
         end)
 
-        if File.dir?(src_include) do
+        if File.dir?(src_include) and File.lstat!(dest_priv).type != :symlink do
           File.rm_rf!(dest_include)
           File.mkdir_p!(Path.dirname(dest_include))
           File.cp_r!(src_include, dest_include)

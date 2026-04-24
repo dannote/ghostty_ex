@@ -19,7 +19,7 @@ defmodule Ghostty.Terminal.Nif do
       include_dirs: [{:priv, "include"}],
       link_lib: [{:priv, @ghostty_vt_lib}]
     ],
-    resources: [:TerminalResource],
+    resources: [:TerminalResource, :TtyResource],
     nifs: [
       nif_new: 3,
       nif_vt_write: 2,
@@ -36,6 +36,9 @@ defmodule Ghostty.Terminal.Nif do
       nif_render_state: [arity: 1, concurrency: :dirty_cpu],
       nif_mouse_modes: 1,
       nif_scrollbar: 1,
-      nif_focus_mode: 1
+      nif_focus_mode: 1,
+      nif_tty_open: 2,
+      nif_tty_write: 2,
+      nif_tty_close: 1
     ]
 end

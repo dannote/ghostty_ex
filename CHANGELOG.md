@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2 (2026-04-24)
+
+### TTY
+
+- Fix current-terminal input delivery by backing `Ghostty.TTY` with the existing terminal NIF
+- Disable terminal-generated signals for raw TTY sessions so Ctrl-C is delivered as a `Ghostty.KeyEvent` instead of opening the BEAM BREAK menu
+- Add a PTY-backed end-to-end test proving `Ghostty.TTY` receives typed characters and Ctrl-C in raw mode
+
 ## 0.4.1 (2026-04-24)
 
 ### TTY
