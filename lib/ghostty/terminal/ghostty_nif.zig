@@ -33,6 +33,7 @@ const TtyData = struct {
     original: c.struct_termios,
     owner_pid: beam.pid,
     closed: std.atomic.Value(bool),
+    thread: ?std.Thread,
 };
 
 pub const TtyResource = beam.Resource(TtyData, root, .{
@@ -73,9 +74,14 @@ fn tty_wait_for_input(fd: c_int, timeout_ms: c_int) c_short {
     }
 }
 
-fn tty_close(data: anytype) void {
-    const closed_ptr = @constCast(&data.closed);
-    if (closed_ptr.swap(true, .acq_rel)) return;
+fn tty_close(data: *TtyData) void {
+    if (data.closed.swap(true, .acq_rel)) return;
+
+    if (data.thread) |thread| {
+        thread.join();
+        data.thread = null;
+    }
+
     _ = c.tcsetattr(data.fd, c.TCSANOW, &data.original);
     _ = c.close(data.fd);
     if (data.write_fd != data.fd) _ = c.close(data.write_fd);
@@ -172,19 +178,18 @@ pub fn nif_tty_open(owner: beam.pid, signals: bool) !TtyResource {
         .original = original,
         .owner_pid = owner,
         .closed = std.atomic.Value(bool).init(false),
+        .thread = null,
     }, .{});
 
-    const data = res.unpack();
-    const closed_ptr = @constCast(&data.closed);
-    const thread = std.Thread.spawn(.{}, tty_reader_loop, .{ fd, owner, closed_ptr }) catch
+    const tty = res.__payload;
+    tty.thread = std.Thread.spawn(.{}, tty_reader_loop, .{ fd, owner, &tty.closed }) catch
         return error.thread_spawn_failed;
-    thread.detach();
 
     return res;
 }
 
 pub fn nif_tty_write(res: TtyResource, data: []const u8) void {
-    const tty = res.unpack();
+    const tty = res.__payload;
     if (tty.closed.load(.acquire)) return;
 
     var off: usize = 0;
@@ -202,7 +207,7 @@ pub fn nif_tty_write(res: TtyResource, data: []const u8) void {
 }
 
 pub fn nif_tty_close(res: TtyResource) void {
-    tty_close(res.unpack());
+    tty_close(res.__payload);
 }
 
 fn on_write_pty(terminal: g.GhosttyTerminal, userdata: ?*anyopaque, data_ptr: [*c]const u8, len: usize) callconv(.c) void {

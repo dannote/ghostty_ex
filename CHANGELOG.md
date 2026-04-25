@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.5 (2026-04-25)
+
+### Fixed
+
+- Fixed TTY NIF reader thread ownership by storing the thread and closed flag in the resource payload instead of a copied payload
+
 ## 0.4.4 (2026-04-25)
 
 ### Testing
