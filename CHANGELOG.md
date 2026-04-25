@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6 (2026-04-25)
+
+### CI
+
+- Build and install `libghostty-vt` in the live terminal example job so browser feature tests can load the Ghostty NIF
+
 ## 0.4.5 (2026-04-25)
 
 ### Fixed

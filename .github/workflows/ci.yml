@@ -77,6 +77,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '27'
@@ -85,6 +89,20 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Build libghostty-vt
+        run: |
+          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
+          cd /tmp/ghostty-src
+          zig build -Demit-lib-vt -Doptimize=ReleaseFast
+
+      - name: Install libghostty-vt for example
+        run: |
+          mkdir -p examples/live_terminal/_build/test/lib/ghostty/priv/lib
+          mkdir -p examples/live_terminal/_build/test/lib/ghostty/priv/include
+          cp /tmp/ghostty-src/zig-out/lib/libghostty-vt.* examples/live_terminal/_build/test/lib/ghostty/priv/lib/ 2>/dev/null || true
+          cp -R /tmp/ghostty-src/zig-out/include/ghostty examples/live_terminal/_build/test/lib/ghostty/priv/include/
+          echo "LD_LIBRARY_PATH=$PWD/examples/live_terminal/_build/test/lib/ghostty/priv/lib" >> "$GITHUB_ENV"
 
       - name: Install example assets deps
         working-directory: examples/live_terminal/assets
