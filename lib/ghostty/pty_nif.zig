@@ -23,6 +23,7 @@ const PtyData = struct {
     child_pid: c.pid_t,
     owner_pid: beam.pid,
     closed: std.atomic.Value(bool),
+    thread: ?std.Thread,
 };
 
 pub const PtyResource = beam.Resource(PtyData, root, .{
@@ -35,11 +36,17 @@ pub const PtyCallbacks = struct {
     }
 };
 
-fn do_close(data: anytype) void {
+fn do_close(data: *PtyData) void {
     const closed_ptr = @constCast(&data.closed);
     if (closed_ptr.swap(true, .acq_rel)) return;
     _ = c.kill(data.child_pid, c.SIGHUP);
     _ = c.close(data.master_fd);
+
+    if (data.thread) |thread| {
+        thread.join();
+        data.thread = null;
+    }
+
     _ = c.waitpid(data.child_pid, null, c.WNOHANG);
 }
 
@@ -71,6 +78,12 @@ fn wait_for_fd(fd: c_int, events: c_short, timeout_ms: c_int) c_short {
     }
 }
 
+fn send_data(owner: beam.pid, data: []const u8) void {
+    const env = beam.alloc_env();
+    beam.send(owner, .{ .pty_data, beam.make(data, .{ .env = env }) }, .{ .env = env }) catch {};
+    beam.free_env(env);
+}
+
 fn send_exit_and_wait(child_pid: c.pid_t, closed: *std.atomic.Value(bool), owner: beam.pid) void {
     var status: c_int = 0;
     _ = c.waitpid(child_pid, &status, 0);
@@ -78,13 +91,17 @@ fn send_exit_and_wait(child_pid: c.pid_t, closed: *std.atomic.Value(bool), owner
     if (!closed.load(.acquire)) {
         const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
         const env = beam.alloc_env();
-        beam.send(owner, .{ .exit, exit_status }, .{ .env = env }) catch {};
+        beam.send(owner, .{ .pty_exit, exit_status }, .{ .env = env }) catch {};
         beam.free_env(env);
     }
 }
 
 fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
     var buf: [4096]u8 = undefined;
+
+    const ready_env = beam.alloc_env();
+    beam.send(owner, .{ .pty_ready }, .{ .env = ready_env }) catch {};
+    beam.free_env(ready_env);
 
     while (!closed.load(.acquire)) {
         const revents = wait_for_fd(master_fd, c.POLLIN | c.POLLHUP | c.POLLERR, 100);
@@ -95,10 +112,7 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
                 const n = c.read(master_fd, &buf, buf.len);
 
                 if (n > 0) {
-                    const slice = buf[0..@intCast(n)];
-                    const env = beam.alloc_env();
-                    beam.send(owner, .{ .data, beam.make(slice, .{ .env = env }) }, .{ .env = env }) catch {};
-                    beam.free_env(env);
+                    send_data(owner, buf[0..@intCast(n)]);
                     continue;
                 }
 
@@ -131,29 +145,27 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
         .ws_ypixel = 0,
     };
 
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const cmd_z = try allocator.dupeZ(u8, cmd);
+    const argv = try allocator.alloc(?[*:0]u8, args.len + 2);
+    argv[0] = @ptrCast(cmd_z.ptr);
+
+    for (args, 0..) |arg, i| {
+        const arg_z = try allocator.dupeZ(u8, arg);
+        argv[i + 1] = @ptrCast(arg_z.ptr);
+    }
+
+    argv[args.len + 1] = null;
+
     // SAFETY: initialized by forkpty below
     var master_fd: c_int = undefined;
     const pid = c.forkpty(&master_fd, null, null, &ws);
     if (pid < 0) return error.forkpty_failed;
 
     if (pid == 0) {
-        _ = c.setenv("TERM", "xterm-256color", 1);
-
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-        const allocator = arena.allocator();
-
-        const cmd_z = try allocator.dupeZ(u8, cmd);
-        const argv = try allocator.alloc(?[*:0]u8, args.len + 2);
-        argv[0] = @ptrCast(cmd_z.ptr);
-
-        for (args, 0..) |arg, i| {
-            const arg_z = try allocator.dupeZ(u8, arg);
-            argv[i + 1] = @ptrCast(arg_z.ptr);
-        }
-
-        argv[args.len + 1] = null;
-
         _ = c.execvp(@ptrCast(cmd_z.ptr), @ptrCast(argv.ptr));
         c._exit(127);
     }
@@ -166,19 +178,20 @@ pub fn nif_pty_open(cmd: []const u8, args: []const []const u8, cols: u16, rows: 
         .child_pid = pid,
         .owner_pid = owner,
         .closed = std.atomic.Value(bool).init(false),
+        .thread = null,
     }, .{});
 
-    const data = res.unpack();
+    const data = res.__payload;
     const closed_ptr = @constCast(&data.closed);
     const thread = std.Thread.spawn(.{}, reader_loop, .{ master_fd, pid, owner, closed_ptr }) catch
         return error.thread_spawn_failed;
-    thread.detach();
+    data.thread = thread;
 
     return res;
 }
 
 pub fn nif_pty_write(res: PtyResource, data: []const u8) void {
-    const pty = res.unpack();
+    const pty = res.__payload;
     if (pty.closed.load(.acquire)) return;
 
     var off: usize = 0;
@@ -205,7 +218,7 @@ pub fn nif_pty_write(res: PtyResource, data: []const u8) void {
 }
 
 pub fn nif_pty_resize(res: PtyResource, cols: u16, rows: u16) void {
-    const pty = res.unpack();
+    const pty = res.__payload;
     if (pty.closed.load(.acquire)) return;
 
     var ws: c.struct_winsize = .{
@@ -219,5 +232,5 @@ pub fn nif_pty_resize(res: PtyResource, cols: u16, rows: u16) void {
 }
 
 pub fn nif_pty_close(res: PtyResource) void {
-    do_close(res.unpack());
+    do_close(res.__payload);
 }

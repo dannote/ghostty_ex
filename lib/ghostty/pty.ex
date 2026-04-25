@@ -30,6 +30,8 @@ defmodule Ghostty.PTY do
 
   alias Ghostty.PTY.Nif
 
+  @reader_start_timeout_ms 1_000
+
   @type option ::
           {:cmd, Path.t()}
           | {:args, [String.t()]}
@@ -105,7 +107,8 @@ defmodule Ghostty.PTY do
 
     validate_size!(cols, rows)
 
-    ref = Nif.nif_pty_open(cmd, args, cols, rows, owner)
+    ref = Nif.nif_pty_open(cmd, args, cols, rows, self())
+    wait_until_reader_ready()
     {:ok, %__MODULE__{ref: ref, owner: owner}}
   rescue
     e in [ErlangError, ArgumentError] ->
@@ -126,6 +129,25 @@ defmodule Ghostty.PTY do
   def handle_call({:resize, cols, rows}, _from, state) do
     Nif.nif_pty_resize(state.ref, cols, rows)
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_info({:pty_data, data}, state) do
+    send(state.owner, {:data, data})
+    {:noreply, state}
+  end
+
+  def handle_info({:pty_exit, status}, state) do
+    send(state.owner, {:exit, status})
+    {:noreply, state}
+  end
+
+  defp wait_until_reader_ready do
+    receive do
+      {:pty_ready} -> :ok
+    after
+      @reader_start_timeout_ms -> raise "PTY reader did not start"
+    end
   end
 
   defp validate_size!(cols, rows)
