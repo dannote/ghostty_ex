@@ -8,6 +8,13 @@
 - Require explicit `takeover: true` before the NIF backend stops OTP's shell reader
 - Route `Ghostty.TTY.write/2` through the active TTY backend so raw TTY sessions do not depend on OTP's shell writer
 
+### PTY
+
+- Route PTY NIF events through the `Ghostty.PTY` GenServer so public data and exit messages are owned by the Elixir process
+- Add a reader-start handshake before `Ghostty.PTY.start_link/1` returns, with configurable `:reader_start_timeout`
+- Keep PTY reader threads owned by the NIF resource and join them during close to avoid fd reuse races
+- Move argv preparation before `forkpty()` so the child process only execs or exits after fork
+
 ## 0.4.2 (2026-04-24)
 
 ### TTY

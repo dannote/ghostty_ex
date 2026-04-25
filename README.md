@@ -134,7 +134,13 @@ Run interactive programs in a real pseudo-terminal:
 
 ```elixir
 {:ok, term} = Ghostty.Terminal.start_link(cols: 80, rows: 24)
-{:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/bash", cols: 80, rows: 24)
+{:ok, pty} =
+  Ghostty.PTY.start_link(
+    cmd: "/bin/bash",
+    cols: 80,
+    rows: 24,
+    reader_start_timeout: 1_000
+  )
 
 # PTY output arrives as messages
 receive do
@@ -142,7 +148,7 @@ receive do
 end
 
 # Send keyboard input
-Ghostty.PTY.write(pty, "ls --color\n")
+Ghostty.PTY.write(pty, "ls --color\r")
 
 # Resize the PTY (reflows in the terminal too)
 Ghostty.PTY.resize(pty, 120, 40)
