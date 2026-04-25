@@ -37,6 +37,7 @@ defmodule Ghostty.PTY do
           | {:args, [String.t()]}
           | {:cols, pos_integer()}
           | {:rows, pos_integer()}
+          | {:reader_start_timeout, timeout()}
           | {:name, GenServer.name()}
 
   defstruct [:ref, :owner]
@@ -52,6 +53,7 @@ defmodule Ghostty.PTY do
     * `:args` — argument list (default: `[]`)
     * `:cols` — terminal width in columns (default: `80`)
     * `:rows` — terminal height in rows (default: `24`)
+    * `:reader_start_timeout` — how long to wait for the PTY reader thread to start (default: `1_000`)
     * `:name` — GenServer name registration
 
   """
@@ -104,11 +106,13 @@ defmodule Ghostty.PTY do
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
     owner = Keyword.fetch!(opts, :owner)
+    reader_start_timeout = Keyword.get(opts, :reader_start_timeout, @reader_start_timeout_ms)
 
     validate_size!(cols, rows)
+    validate_timeout!(reader_start_timeout, :reader_start_timeout)
 
     ref = Nif.nif_pty_open(cmd, args, cols, rows, self())
-    wait_until_reader_ready()
+    wait_until_reader_ready(reader_start_timeout)
     {:ok, %__MODULE__{ref: ref, owner: owner}}
   rescue
     e in [ErlangError, ArgumentError] ->
@@ -142,11 +146,11 @@ defmodule Ghostty.PTY do
     {:noreply, state}
   end
 
-  defp wait_until_reader_ready do
+  defp wait_until_reader_ready(timeout) do
     receive do
       {:pty_ready} -> :ok
     after
-      @reader_start_timeout_ms -> raise "PTY reader did not start"
+      timeout -> raise "PTY reader did not start"
     end
   end
 
@@ -157,5 +161,13 @@ defmodule Ghostty.PTY do
   defp validate_size!(cols, rows) do
     raise ArgumentError,
           "expected cols and rows to be positive integers, got: cols=#{inspect(cols)}, rows=#{inspect(rows)}"
+  end
+
+  defp validate_timeout!(:infinity, _name), do: :ok
+
+  defp validate_timeout!(timeout, _name) when is_integer(timeout) and timeout >= 0, do: :ok
+
+  defp validate_timeout!(timeout, name) do
+    raise ArgumentError, "expected #{name} to be a non-negative integer or :infinity, got: #{inspect(timeout)}"
   end
 end

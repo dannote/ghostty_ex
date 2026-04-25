@@ -63,6 +63,20 @@ defmodule Ghostty.PTYTest do
       assert :ok = Ghostty.PTY.resize(pty, 120, 40)
       assert_close(pty)
     end
+
+    test "accepts configurable reader start timeout" do
+      {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/cat", reader_start_timeout: @pty_event_timeout_ms)
+      assert_close(pty)
+    end
+
+    test "rejects invalid reader start timeout" do
+      Process.flag(:trap_exit, true)
+
+      assert {:error, {:pty_open_failed, message}} =
+               Ghostty.PTY.start_link(cmd: "/bin/cat", reader_start_timeout: -1)
+
+      assert message =~ "reader_start_timeout"
+    end
   end
 
   defp assert_close(pty) do
