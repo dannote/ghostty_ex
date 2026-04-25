@@ -1,7 +1,7 @@
 defmodule Ghostty.MixProject do
   use Mix.Project
 
-  @version "0.4.6"
+  @version "0.4.7"
   @source_url "https://github.com/dannote/ghostty_ex"
 
   def project do
@@ -141,6 +141,7 @@ defmodule Ghostty.MixProject do
         lib/ghostty/terminal/cell.ex
         lib/ghostty/terminal.ex
         lib/ghostty/tty.ex
+        lib/ghostty/tty/*.ex
         lib/ghostty/key_decoder.ex
         lib/ghostty/key_event.ex
         lib/ghostty/mouse_event.ex

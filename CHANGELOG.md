@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.7 (2026-04-25)
+
+### Fixed
+
+- Include the `Ghostty.TTY` backend modules in the Hex package
+
 ## 0.4.6 (2026-04-25)
 
 ### CI
