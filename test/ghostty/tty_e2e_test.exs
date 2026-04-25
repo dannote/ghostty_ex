@@ -4,6 +4,7 @@ defmodule Ghostty.TTYE2ETest do
   alias Ghostty.PTY
 
   @child_event_timeout_ms 3_000
+  @parent_event_timeout_ms 5_000
   @poll_interval_ms 20
 
   @tag :tmp_dir
@@ -30,7 +31,7 @@ defmodule Ghostty.TTYE2ETest do
   end
 
   defp wait_until(expected, output) do
-    deadline = System.monotonic_time(:millisecond) + @child_event_timeout_ms
+    deadline = System.monotonic_time(:millisecond) + @parent_event_timeout_ms
     collect_until(expected, output, deadline)
   end
 

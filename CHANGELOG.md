@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 (2026-04-25)
+
+### Testing
+
+- Give the TTY end-to-end test parent process enough time to observe the child process's explicit timeout result instead of racing the same deadline
+
 ## 0.4.3 (2026-04-24)
 
 ### TTY
