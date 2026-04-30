@@ -19,4 +19,7 @@ defmodule Ghostty.TTY.Winch do
 
   @impl true
   def handle_info(_message, state), do: {:ok, state}
+
+  @impl true
+  def terminate(_reason, _state), do: :ok
 end

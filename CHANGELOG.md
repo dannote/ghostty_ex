@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.8 (2026-04-30)
+
+### Fixed
+
+- Emit `Ghostty.TTY` resize events from the NIF terminal backend when the PTY/window size changes
+- Register independent WINCH handlers for multiple `Ghostty.TTY` instances
+- Package Linux precompiled NIFs with `$ORIGIN` runpaths so bundled `libghostty-vt.so` loads without manual `LD_LIBRARY_PATH`
+
 ## 0.4.7 (2026-04-25)
 
 ### Fixed

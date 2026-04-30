@@ -72,6 +72,22 @@ jobs:
           mix deps.get
           mix compile
 
+      - name: Fix Linux packaged rpaths
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+
+          BUILD_PRIV=_build/dev/lib/ghostty/priv/lib
+          TERMINAL_NIF=$BUILD_PRIV/Elixir.Ghostty.Terminal.Nif.so
+          PTY_NIF=$BUILD_PRIV/Elixir.Ghostty.PTY.Nif.so
+
+          patchelf --set-rpath '$ORIGIN' "$TERMINAL_NIF"
+          patchelf --set-rpath '$ORIGIN' "$PTY_NIF"
+
+          readelf -d "$TERMINAL_NIF" | grep -E 'RUNPATH|RPATH' | grep '\$ORIGIN'
+          readelf -d "$PTY_NIF" | grep -E 'RUNPATH|RPATH' | grep '\$ORIGIN'
+
       - name: Fix macOS packaged install names
         if: runner.os == 'macOS'
         run: |

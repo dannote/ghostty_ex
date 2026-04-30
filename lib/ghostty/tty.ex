@@ -41,7 +41,14 @@ defmodule Ghostty.TTY do
           | {:takeover, boolean()}
           | {:disable_otp_reader, boolean()}
 
-  defstruct [:owner, :ref, :backend, buffer: nil]
+  defstruct [
+    :owner,
+    :ref,
+    :backend,
+    :winch_handler_id,
+    :last_size,
+    buffer: nil
+  ]
 
   @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -84,10 +91,17 @@ defmodule Ghostty.TTY do
   def init(opts) do
     owner = Keyword.fetch!(opts, :owner)
     ref = make_ref()
-    add_winch_handler(owner, self(), ref)
+    winch_handler_id = add_winch_handler(owner, self(), ref)
     backend = Backend.start(opts, self())
 
-    {:ok, %__MODULE__{owner: owner, ref: ref, backend: backend}}
+    {:ok,
+     %__MODULE__{
+       owner: owner,
+       ref: ref,
+       backend: backend,
+       winch_handler_id: winch_handler_id,
+       last_size: size()
+     }}
   rescue
     exception -> {:stop, Exception.message(exception)}
   catch
@@ -96,6 +110,7 @@ defmodule Ghostty.TTY do
 
   @impl true
   def terminate(_reason, state) do
+    remove_winch_handler(state.winch_handler_id)
     Backend.close(state.backend)
     :ok
   end
@@ -126,18 +141,38 @@ defmodule Ghostty.TTY do
   end
 
   def handle_info({:resize, ref}, %__MODULE__{ref: ref} = state) do
-    {cols, rows} = size()
-    send_event(state, {:resize, cols, rows})
-    {:noreply, state}
+    {:noreply, maybe_emit_resize(state, size())}
+  end
+
+  def handle_info({:tty_resize, cols, rows}, state) do
+    {:noreply, maybe_emit_resize(state, {cols, rows})}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
 
   defp add_winch_handler(owner, tty, ref) do
-    case :gen_event.add_handler(:erl_signal_server, __MODULE__.Winch, {owner, tty, ref}) do
+    handler_id = {__MODULE__.Winch, ref}
+
+    case :gen_event.add_handler(:erl_signal_server, handler_id, {owner, tty, ref}) do
+      :ok -> handler_id
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp remove_winch_handler(nil), do: :ok
+
+  defp remove_winch_handler(handler_id) do
+    case :gen_event.delete_handler(:erl_signal_server, handler_id, :ok) do
       :ok -> :ok
       {:error, _reason} -> :ok
     end
+  end
+
+  defp maybe_emit_resize(%__MODULE__{last_size: size} = state, size), do: state
+
+  defp maybe_emit_resize(state, {cols, rows} = size) do
+    send_event(state, {:resize, cols, rows})
+    %{state | last_size: size}
   end
 
   defp handle_data("\e", %__MODULE__{buffer: nil} = state) do

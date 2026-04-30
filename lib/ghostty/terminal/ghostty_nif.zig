@@ -7,6 +7,7 @@ const c = @cImport({
     @cInclude("errno.h");
     @cInclude("fcntl.h");
     @cInclude("poll.h");
+    @cInclude("sys/ioctl.h");
     @cInclude("termios.h");
     @cInclude("unistd.h");
 });
@@ -25,7 +26,6 @@ pub const TerminalCallbacks = struct {
         g.ghostty_terminal_free(data.terminal);
     }
 };
-
 
 const TtyData = struct {
     fd: c_int,
@@ -87,15 +87,41 @@ fn tty_close(data: *TtyData) void {
     if (data.write_fd != data.fd) _ = c.close(data.write_fd);
 }
 
+fn tty_window_size(fd: c_int) ?c.struct_winsize {
+    var size: c.struct_winsize = undefined;
+    if (c.ioctl(fd, c.TIOCGWINSZ, &size) != 0) return null;
+    if (size.ws_col == 0 or size.ws_row == 0) return null;
+    return size;
+}
+
+fn tty_send_resize(owner: beam.pid, size: c.struct_winsize) void {
+    const env = beam.alloc_env();
+    beam.send(
+        owner,
+        .{ .tty_resize, @as(u16, size.ws_col), @as(u16, size.ws_row) },
+        .{ .env = env },
+    ) catch {};
+    beam.free_env(env);
+}
+
 fn tty_reader_loop(fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
     var buf: [4096]u8 = undefined;
+    var last_size = tty_window_size(fd);
 
     const ready_env = beam.alloc_env();
-    beam.send(owner, .{ .tty_ready }, .{ .env = ready_env }) catch {};
+    beam.send(owner, .{.tty_ready}, .{ .env = ready_env }) catch {};
     beam.free_env(ready_env);
 
     while (!closed.load(.acquire)) {
         const revents = tty_wait_for_input(fd, 100);
+
+        if (tty_window_size(fd)) |current_size| {
+            if (last_size == null or current_size.ws_col != last_size.?.ws_col or current_size.ws_row != last_size.?.ws_row) {
+                last_size = current_size;
+                tty_send_resize(owner, current_size);
+            }
+        }
+
         if (revents == 0) continue;
 
         if (revents & c.POLLIN != 0) {
@@ -118,7 +144,7 @@ fn tty_reader_loop(fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool)) 
                 }
 
                 const env = beam.alloc_env();
-                beam.send(owner, .{ .tty_eof }, .{ .env = env }) catch {};
+                beam.send(owner, .{.tty_eof}, .{ .env = env }) catch {};
                 beam.free_env(env);
                 return;
             }
@@ -126,7 +152,7 @@ fn tty_reader_loop(fd: c_int, owner: beam.pid, closed: *std.atomic.Value(bool)) 
 
         if (revents & (c.POLLHUP | c.POLLERR) != 0 and revents & c.POLLIN == 0) {
             const env = beam.alloc_env();
-            beam.send(owner, .{ .tty_eof }, .{ .env = env }) catch {};
+            beam.send(owner, .{.tty_eof}, .{ .env = env }) catch {};
             beam.free_env(env);
             return;
         }
