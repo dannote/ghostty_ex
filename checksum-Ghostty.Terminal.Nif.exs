@@ -1,8 +1,8 @@
 [
-  {"Elixir.Ghostty.Terminal.Nif-v0.4.7-x86_64-linux-gnu.so.tar.gz",
-   "sha256:855198dba42531215c992b1eb200d0c9b76fe5f242518a4c196c97c11a2a68c5"},
-  {"Elixir.Ghostty.Terminal.Nif-v0.4.7-aarch64-linux-gnu.so.tar.gz",
-   "sha256:375b477ad043adc1bde9f84fc8ddc7eeedd935ded72e235abf44f8d419388001"},
-  {"Elixir.Ghostty.Terminal.Nif-v0.4.7-aarch64-macos-none.so.tar.gz",
-   "sha256:ad7cd28a6c09cc507790381c23f106f8e6eee29bacc0d9920f95449be81b30b9"}
+  {"Elixir.Ghostty.Terminal.Nif-v0.4.8-x86_64-linux-gnu.so.tar.gz",
+   "sha256:5edb41e8e8f2ecf9180bad33697168631d23947529960776a794cc05bc81212a"},
+  {"Elixir.Ghostty.Terminal.Nif-v0.4.8-aarch64-linux-gnu.so.tar.gz",
+   "sha256:c029042b2e2d4c3058c7ec46d98d65d9a3bf574043f473127c8cfa120dc9a3e3"},
+  {"Elixir.Ghostty.Terminal.Nif-v0.4.8-aarch64-macos-none.so.tar.gz",
+   "sha256:e445e0cdecaa2a743add78bbc60d3feda0b573d8242e7c848c037a3e8a2906a9"}
 ]
