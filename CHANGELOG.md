@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.9 (2026-05-24)
+
+### Fixed
+
+- Reliably report PTY child exits for short output-only commands.
+- Treat PTY read `EIO` as child termination on platforms that signal PTY EOF that way.
+
 ## 0.4.8 (2026-04-30)
 
 ### Fixed
