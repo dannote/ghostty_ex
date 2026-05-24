@@ -84,16 +84,47 @@ fn send_data(owner: beam.pid, data: []const u8) void {
     beam.free_env(env);
 }
 
-fn send_exit_and_wait(child_pid: c.pid_t, closed: *std.atomic.Value(bool), owner: beam.pid) void {
-    var status: c_int = 0;
-    _ = c.waitpid(child_pid, &status, 0);
-
+fn send_exit_status(status: c_int, closed: *std.atomic.Value(bool), owner: beam.pid) void {
     if (!closed.load(.acquire)) {
         const exit_status: i32 = if (c.WIFEXITED(status)) c.WEXITSTATUS(status) else 0;
         const env = beam.alloc_env();
         beam.send(owner, .{ .pty_exit, exit_status }, .{ .env = env }) catch {};
         beam.free_env(env);
     }
+}
+
+fn send_exit_and_wait(child_pid: c.pid_t, closed: *std.atomic.Value(bool), owner: beam.pid) void {
+    var status: c_int = 0;
+
+    var attempts: usize = 0;
+    while (!closed.load(.acquire) and attempts < 100) : (attempts += 1) {
+        const rc = c.waitpid(child_pid, &status, c.WNOHANG);
+        if (rc == child_pid) {
+            send_exit_status(status, closed, owner);
+            return;
+        }
+        if (rc < 0) {
+            send_exit_status(0, closed, owner);
+            return;
+        }
+        std.Thread.sleep(1 * std.time.ns_per_ms);
+    }
+
+    send_exit_status(0, closed, owner);
+}
+
+fn send_exit_if_child_exited(child_pid: c.pid_t, closed: *std.atomic.Value(bool), owner: beam.pid) bool {
+    var status: c_int = 0;
+    const rc = c.waitpid(child_pid, &status, c.WNOHANG);
+    if (rc == child_pid) {
+        send_exit_status(status, closed, owner);
+        return true;
+    }
+    if (rc < 0) {
+        send_exit_status(0, closed, owner);
+        return true;
+    }
+    return false;
 }
 
 fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *std.atomic.Value(bool)) void {
@@ -105,7 +136,10 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
 
     while (!closed.load(.acquire)) {
         const revents = wait_for_fd(master_fd, c.POLLIN | c.POLLHUP | c.POLLERR, 100);
-        if (revents == 0) continue;
+        if (revents == 0) {
+            if (send_exit_if_child_exited(child_pid, closed, owner)) return;
+            continue;
+        }
 
         if (revents & c.POLLIN != 0) {
             while (!closed.load(.acquire)) {
@@ -120,6 +154,10 @@ fn reader_loop(master_fd: c_int, child_pid: c.pid_t, owner: beam.pid, closed: *s
                     const errno = get_errno();
                     if (errno == c.EINTR) continue;
                     if (is_would_block(errno)) break;
+                    if (errno == c.EIO) {
+                        send_exit_and_wait(child_pid, closed, owner);
+                        return;
+                    }
                     return;
                 }
 

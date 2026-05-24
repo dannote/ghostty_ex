@@ -26,6 +26,15 @@ defmodule Ghostty.PTYTest do
       assert_close(pty)
     end
 
+    test "reports exit after short output-only commands" do
+      for _ <- 1..50 do
+        {:ok, pty} = Ghostty.PTY.start_link(cmd: "/bin/sh", args: ["-c", "printf ok"])
+        assert_receive {:data, "ok"}, @pty_event_timeout_ms
+        assert_receive {:exit, 0}, @pty_event_timeout_ms
+        assert_close(pty)
+      end
+    end
+
     test "child sees a real TTY" do
       {:ok, pty} =
         Ghostty.PTY.start_link(
