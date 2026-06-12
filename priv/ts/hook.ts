@@ -657,10 +657,23 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
 
     this.handleEvent('ghostty:render', (payload: RenderPayload) => {
       if (payload.id !== this.el.id) return
-      this.rowsData = payload.cells
+
+      // Support row-diff for LiveView efficiency: when payload has
+      // `rows: [{index, cells}, ...]` instead of full `cells`, only update
+      // the changed rows. Full `cells` still supported for initial/resize.
+      if (Array.isArray(payload.rows)) {
+        for (const { index, cells } of payload.rows) {
+          if (typeof index === 'number' && index >= 0 && index < this.rowsData.length) {
+            this.rowsData[index] = cells
+          }
+        }
+      } else if (payload.cells) {
+        this.rowsData = payload.cells
+        this.cols = payload.cells[0]?.length ?? this.cols
+        this.rows = payload.cells.length || this.rows
+      }
+
       this.cursor = payload.cursor
-      this.cols = payload.cells[0]?.length ?? this.cols
-      this.rows = payload.cells.length || this.rows
       this.mouse = payload.mouse || { ...DEFAULT_MOUSE }
       this.scrollbar = payload.scrollbar ?? null
       this.focusReporting = payload.focus_reporting ?? false
@@ -670,7 +683,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       // Support an optional onRenderCells hook for custom cell rendering
       // (e.g. RLE coalescing, canvas, etc.) without forking the library.
       // Falls back to the built-in renderer.
-      ;(this.onRenderCells || renderCells)(this.pre, payload.cells)
+      ;(this.onRenderCells || renderCells)(this.pre, this.rowsData)
       doRenderSelection(this)
       syncCursorBlink(this)
       doRenderCursor(this)

@@ -36,7 +36,8 @@ export interface ScrollbarState {
 
 export interface RenderPayload {
   id: string
-  cells: Cell[][]
+  cells?: Cell[][]
+  rows?: Array<{ index: number; cells: Cell[] }>
   cursor: CursorState
   mouse: MouseModes
   scrollbar: ScrollbarState
