@@ -6,6 +6,20 @@ export function isPasteShortcut(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v'
 }
 
+export function isBrowserDevShortcut(e: KeyboardEvent): boolean {
+  const ctrlOrMeta = e.ctrlKey || e.metaKey
+  const shift = e.shiftKey
+
+  if (e.key === 'F5' || e.key === 'F12') return true
+
+  // Common dev shortcuts we want the browser to handle even in raw terminal mode
+  if (ctrlOrMeta && shift && ['R', 'I', 'J', 'C'].includes(e.key.toUpperCase())) {
+    return true // Ctrl/Cmd+Shift+R (hard refresh), +I/J (devtools), +C (inspect)
+  }
+
+  return false
+}
+
 export function mouseButtonName(button: number): string | null {
   switch (button) {
     case 0:

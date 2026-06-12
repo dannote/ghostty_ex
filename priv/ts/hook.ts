@@ -10,6 +10,7 @@ import {
 } from './dom'
 import {
   hasMouseModifiers,
+  isBrowserDevShortcut,
   isCopyShortcut,
   isPasteShortcut,
   mouseButtonName,
@@ -56,6 +57,8 @@ interface TerminalState {
   autofocusTimers: ReturnType<typeof setTimeout>[]
   readySent: boolean
   autofocusPending: boolean
+
+  onRenderCells?: (pre: HTMLPreElement, rows: Cell[][]) => void
 
   screen: HTMLDivElement
   pre: HTMLPreElement
@@ -536,6 +539,9 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       if (isPasteShortcut(e)) {
         return
       }
+      if (isBrowserDevShortcut(e)) {
+        return // let browser handle dev shortcuts (Ctrl+Shift+R hard refresh, F12/Shift+I devtools, etc.) even in raw mode
+      }
       e.preventDefault()
       pushHookEvent(this, 'key', {
         key: e.key,
@@ -653,7 +659,10 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       if (mouseModeActive(this)) {
         clearSelection(this)
       }
-      renderCells(this.pre, payload.cells)
+      // Support an optional onRenderCells hook for custom cell rendering
+      // (e.g. RLE coalescing, canvas, etc.) without forking the library.
+      // Falls back to the built-in renderer.
+      ;(this.onRenderCells || renderCells)(this.pre, payload.cells)
       doRenderSelection(this)
       syncCursorBlink(this)
       doRenderCursor(this)
