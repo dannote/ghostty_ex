@@ -1,3 +1,7 @@
+import { rgb } from './util'
+
+import type { Color } from './types'
+
 export function createScreen(): HTMLDivElement {
   const screen = document.createElement('div')
   screen.style.position = 'relative'
@@ -36,6 +40,17 @@ export function createPre(): HTMLPreElement {
   pre.style.fontVariantLigatures = 'none'
   pre.style.textRendering = 'geometricPrecision'
   return pre
+}
+
+export function applyTerminalColors(
+  pre: HTMLPreElement,
+  foreground: Color | null,
+  background: Color | null,
+  defaultForeground: string,
+  defaultBackground: string
+): void {
+  pre.style.color = foreground ? rgb(foreground) : defaultForeground
+  pre.style.backgroundColor = background ? rgb(background) : defaultBackground
 }
 
 export function createSelectionLayer(): HTMLDivElement {

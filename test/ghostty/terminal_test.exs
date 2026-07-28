@@ -47,6 +47,73 @@ defmodule Ghostty.TerminalTest do
       assert {:error, {:invalid_option, msg}} = Terminal.start_link(max_scrollback: -1)
       assert msg =~ "max_scrollback"
     end
+
+    test "rejects invalid theme colors" do
+      Process.flag(:trap_exit, true)
+
+      assert {:error, {:invalid_option, msg}} =
+               Terminal.start_link(foreground: {256, 0, 0})
+
+      assert msg =~ "foreground"
+    end
+
+    test "rejects invalid palette indices" do
+      Process.flag(:trap_exit, true)
+
+      assert {:error, {:invalid_option, msg}} =
+               Terminal.start_link(palette: %{256 => {1, 2, 3}})
+
+      assert msg =~ "palette indices"
+    end
+  end
+
+  describe "theme/1" do
+    test "configures defaults and sparse palette entries" do
+      {:ok, term} =
+        Terminal.start_link(
+          foreground: {205, 214, 244},
+          background: {30, 30, 46},
+          cursor_color: {245, 224, 220},
+          palette: %{1 => {243, 139, 168}, 4 => {137, 180, 250}}
+        )
+
+      theme = Terminal.theme(term)
+      assert theme.foreground == {205, 214, 244}
+      assert theme.background == {30, 30, 46}
+      assert theme.cursor == {245, 224, 220}
+      assert Enum.at(theme.palette, 1) == {243, 139, 168}
+      assert Enum.at(theme.palette, 4) == {137, 180, 250}
+      assert length(theme.palette) == 256
+    end
+
+    test "accepts a sequential palette and resolves ANSI colors" do
+      {:ok, baseline} = Terminal.start_link()
+      baseline_black = baseline |> Terminal.theme() |> Map.fetch!(:palette) |> Enum.at(0)
+
+      {:ok, term} = Terminal.start_link(palette: [{12, 34, 56}, {78, 90, 123}])
+      Terminal.write(term, "\e[31mX")
+
+      assert %{palette: [{12, 34, 56}, {78, 90, 123} | _]} = Terminal.theme(term)
+      assert baseline_black != {12, 34, 56}
+      assert {"X", {78, 90, 123}, nil, _flags} = term |> Terminal.cells() |> hd() |> hd()
+    end
+
+    test "exposes foreground and background in render state" do
+      {:ok, term} =
+        Terminal.start_link(foreground: {1, 2, 3}, background: {4, 5, 6})
+
+      assert %{foreground: {1, 2, 3}, background: {4, 5, 6}} = Terminal.render_state(term)
+    end
+
+    test "tracks OSC overrides separately from configured defaults" do
+      {:ok, term} = Terminal.start_link(foreground: {17, 34, 51})
+
+      Terminal.write(term, "\e]10;#aabbcc\e\\")
+      assert Terminal.theme(term).foreground == {170, 187, 204}
+
+      Terminal.write(term, "\e]110\e\\")
+      assert Terminal.theme(term).foreground == {17, 34, 51}
+    end
   end
 
   describe "write/2" do

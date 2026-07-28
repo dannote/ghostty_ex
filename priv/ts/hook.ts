@@ -1,5 +1,6 @@
 import { renderCursor } from './cursor'
 import {
+  applyTerminalColors,
   createCursorEl,
   createMeasure,
   createPre,
@@ -71,6 +72,8 @@ interface TerminalState {
   autofocusPending: boolean
   deferredRender: DeferredRender | null
   pendingMousePress: PendingMousePress | null
+  defaultForeground: string
+  defaultBackground: string
 
   onRenderCells?: (pre: HTMLPreElement, rows: Cell[][]) => void
   onRenderRows?: (pre: HTMLPreElement, rows: RenderRow[], allRows: Cell[][]) => void
@@ -427,6 +430,13 @@ function applyRenderPayload(
   }
 
   hook.cursor = payload.cursor
+  applyTerminalColors(
+    hook.pre,
+    payload.foreground,
+    payload.background,
+    hook.defaultForeground,
+    hook.defaultBackground
+  )
   hook.mouse = payload.mouse || { ...DEFAULT_MOUSE }
   hook.scrollbar = payload.scrollbar ?? null
   hook.focusReporting = payload.focus_reporting ?? false
@@ -516,6 +526,8 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     this.el.appendChild(this.screen)
 
     this.pre = createPre()
+    this.defaultForeground = this.pre.style.color
+    this.defaultBackground = this.pre.style.backgroundColor
     this.screen.appendChild(this.pre)
 
     this.selectionLayer = createSelectionLayer()

@@ -273,6 +273,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
       %{
         id: id,
         cursor: Map.update!(state.cursor, :color, &color_to_list/1),
+        foreground: color_to_list(state.foreground),
+        background: color_to_list(state.background),
         mouse: state.mouse,
         scrollbar: state.scrollbar,
         focus_reporting: state.focus_reporting
