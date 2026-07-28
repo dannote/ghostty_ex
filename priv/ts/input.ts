@@ -6,6 +6,20 @@ export function isPasteShortcut(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v'
 }
 
+export function isBrowserDevShortcut(e: KeyboardEvent): boolean {
+  const key = e.key.toLowerCase()
+
+  if (key === 'f5' || key === 'f12') return true
+
+  // Hard refresh and Chromium/Firefox developer tools on Windows and Linux.
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && ['r', 'i', 'j', 'c'].includes(key)) {
+    return true
+  }
+
+  // Chromium/Safari developer tools on macOS.
+  return e.metaKey && e.altKey && ['i', 'j', 'c'].includes(key)
+}
+
 export function mouseButtonName(button: number): string | null {
   switch (button) {
     case 0:

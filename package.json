@@ -5,9 +5,10 @@
   },
   "private": true,
   "scripts": {
-    "format": "oxfmt --write priv/ts/",
-    "format:check": "oxfmt --check priv/ts/",
-    "lint": "oxlint -c oxlint.json priv/ts/"
+    "format": "oxfmt --write priv/ts/ test/ts/",
+    "format:check": "oxfmt --check priv/ts/ test/ts/",
+    "lint": "oxlint -c oxlint.json priv/ts/ test/ts/",
+    "test": "bun test test/ts/"
   },
   "type": "module"
 }

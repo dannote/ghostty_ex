@@ -13,7 +13,8 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, otp: '27', elixir: '1.18' }
-          - { os: macos-latest, otp: '27', elixir: '1.18' }
+          # Zig 0.15 cannot link against the macOS 26 SDK shipped by macos-latest.
+          - { os: macos-15, otp: '27', elixir: '1.18' }
     steps:
       - uses: actions/checkout@v4
 
@@ -28,8 +29,11 @@ jobs:
 
       - name: Build libghostty-vt
         run: |
+          GHOSTTY_REF=$(tr -d '[:space:]' < .ghostty-ref)
           git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
           cd /tmp/ghostty-src
+          git fetch --depth 1 origin "$GHOSTTY_REF"
+          git checkout "$GHOSTTY_REF"
           zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
       - name: Install libghostty-vt
@@ -70,6 +74,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run format:check
       - run: bun run lint
+      - run: bun run test
 
   example-live-terminal:
     needs: [test, ts]
@@ -92,8 +97,11 @@ jobs:
 
       - name: Build libghostty-vt
         run: |
+          GHOSTTY_REF=$(tr -d '[:space:]' < .ghostty-ref)
           git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
           cd /tmp/ghostty-src
+          git fetch --depth 1 origin "$GHOSTTY_REF"
+          git checkout "$GHOSTTY_REF"
           zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
       - name: Install libghostty-vt for example

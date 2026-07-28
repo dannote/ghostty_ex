@@ -3,6 +3,10 @@ export function createScreen(): HTMLDivElement {
   screen.style.position = 'relative'
   screen.style.display = 'block'
   screen.style.width = '100%'
+  // Fill explicitly sized containers while retaining content-based height
+  // when the terminal container itself has no configured height.
+  screen.style.height = '100%'
+  screen.style.overflow = 'hidden'
   return screen
 }
 
@@ -13,12 +17,24 @@ export function createPre(): HTMLPreElement {
   pre.style.backgroundColor = '#1e1e2e'
   pre.style.color = '#cdd6f4'
   pre.style.overflow = 'hidden'
+  // Keep the rendered rows in normal flow so an auto-height terminal gets
+  // its height from its content. Fit mode measures the container directly.
   pre.style.position = 'relative'
   pre.style.width = '100%'
+  pre.style.minHeight = '100%'
   pre.style.boxSizing = 'border-box'
   pre.style.userSelect = 'none'
   pre.style.webkitUserSelect = 'none'
   pre.style.cursor = 'text'
+  // Lock advance width to font's nominal monospace metric. Without these,
+  // the browser can insert sub-pixel kerning / ligature shifts that drift
+  // the actual char position away from the cursor's `col * metrics.width`
+  // offset — by col 80 the cursor is visibly off by several characters.
+  pre.style.letterSpacing = '0'
+  pre.style.fontKerning = 'none'
+  pre.style.fontFeatureSettings = 'normal'
+  pre.style.fontVariantLigatures = 'none'
+  pre.style.textRendering = 'geometricPrecision'
   return pre
 }
 
@@ -114,6 +130,15 @@ export function measureCellMetrics(
   measure.style.fontWeight = styles.fontWeight
   measure.style.fontStyle = styles.fontStyle
   measure.style.lineHeight = styles.lineHeight
+
+  // Match the layout-locking styles set on createPre — the measure span
+  // otherwise reports a width subject to kerning/ligatures that the pre
+  // itself suppresses, drifting the cursor off the real glyph position.
+  measure.style.letterSpacing = '0'
+  measure.style.fontKerning = 'none'
+  measure.style.fontFeatureSettings = 'normal'
+  measure.style.fontVariantLigatures = 'none'
+  measure.style.textRendering = 'geometricPrecision'
 
   input.style.fontFamily = styles.fontFamily
   input.style.fontSize = styles.fontSize

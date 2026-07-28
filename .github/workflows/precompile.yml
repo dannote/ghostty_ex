@@ -16,7 +16,8 @@ jobs:
         include:
           - { target: x86_64-linux-gnu,   os: ubuntu-latest }
           - { target: aarch64-linux-gnu,  os: ubuntu-latest }
-          - { target: aarch64-macos-none, os: macos-latest }
+          # Zig 0.15 cannot link against the macOS 26 SDK shipped by macos-latest.
+          - { target: aarch64-macos-none, os: macos-15 }
 
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +33,11 @@ jobs:
 
       - name: Build libghostty-vt
         run: |
+          GHOSTTY_REF=$(tr -d '[:space:]' < .ghostty-ref)
           git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
           cd /tmp/ghostty-src
-          git fetch --depth 1 origin baad0aa6669dc576872831752be0f30debecbfd1
-          git checkout baad0aa6669dc576872831752be0f30debecbfd1
+          git fetch --depth 1 origin "$GHOSTTY_REF"
+          git checkout "$GHOSTTY_REF"
           zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
       - name: Install libghostty-vt
