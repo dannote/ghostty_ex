@@ -1,37 +1,80 @@
 import { CellFlags } from './types'
 import { esc, rgb } from './util'
 
-import type { Cell, CellMetrics, Color, Selection } from './types'
+import type { Cell, CellMetrics, Color, RenderRow, Selection } from './types'
 
 export function renderCells(pre: HTMLPreElement, rows: Cell[][]): void {
-  // Coalesce runs of consecutive cells with identical style into one span.
-  // Upstream (simple) version emits one span per styled cell — 3200 spans for
-  // an 80x40 grid in practice — which is the bulk of the rendering cost.
-  // RLE typically 10x's the DOM size reduction and improves perf.
-  let html = ''
-  for (const row of rows) {
-    let runStyle: string | null = null
-    let runChars = ''
-    for (const [char, fg, bg, flags] of row) {
-      const styles = cellStyles(fg, bg, flags)
-      const styleStr = styles.length > 0 ? styles.join(';') : ''
-      const ch = char || ' '
-      if (styleStr === runStyle) {
-        runChars += esc(ch)
-      } else {
-        if (runChars) {
-          html += runStyle ? `<span style="${runStyle}">${runChars}</span>` : runChars
-        }
-        runStyle = styleStr
-        runChars = esc(ch)
-      }
+  pre.innerHTML = rows
+    .map((row, index) => `<span data-ghostty-row="${index}">${renderRow(row)}</span>\n`)
+    .join('')
+}
+
+export function applyRowUpdates(rows: Cell[][], updates: RenderRow[]): RenderRow[] {
+  const accepted: RenderRow[] = []
+
+  for (const update of updates) {
+    const { index, cells } = update
+    const current = rows[index]
+
+    if (
+      Number.isInteger(index) &&
+      index >= 0 &&
+      Array.isArray(cells) &&
+      current !== undefined &&
+      cells.length === current.length
+    ) {
+      rows[index] = cells
+      accepted.push(update)
     }
-    if (runChars) {
-      html += runStyle ? `<span style="${runStyle}">${runChars}</span>` : runChars
-    }
-    html += '\n'
   }
-  pre.innerHTML = html
+
+  return accepted
+}
+
+export function renderRows(pre: HTMLPreElement, rows: RenderRow[]): boolean {
+  const replacements: Array<{ element: Element; html: string }> = []
+
+  for (const { index, cells } of rows) {
+    const element = pre.children.item(index)
+    if (!element || element.getAttribute('data-ghostty-row') !== String(index)) {
+      return false
+    }
+    replacements.push({ element, html: renderRow(cells) })
+  }
+
+  for (const { element, html } of replacements) {
+    element.innerHTML = html
+  }
+
+  return true
+}
+
+function renderRow(row: Cell[]): string {
+  // Coalesce runs of consecutive cells with identical style into one span.
+  let html = ''
+  let runStyle: string | null = null
+  let runChars = ''
+
+  for (const [char, fg, bg, flags] of row) {
+    const styles = cellStyles(fg, bg, flags)
+    const styleStr = styles.length > 0 ? styles.join(';') : ''
+    const ch = char || ' '
+    if (styleStr === runStyle) {
+      runChars += esc(ch)
+    } else {
+      if (runChars) {
+        html += runStyle ? `<span style="${runStyle}">${runChars}</span>` : runChars
+      }
+      runStyle = styleStr
+      runChars = esc(ch)
+    }
+  }
+
+  if (runChars) {
+    html += runStyle ? `<span style="${runStyle}">${runChars}</span>` : runChars
+  }
+
+  return html
 }
 
 export function renderSelection(

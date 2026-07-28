@@ -34,14 +34,21 @@ export interface ScrollbarState {
   len: number
 }
 
-export interface RenderPayload {
+export interface RenderRow {
+  index: number
+  cells: Cell[]
+}
+
+interface RenderPayloadMetadata {
   id: string
-  cells: Cell[][]
   cursor: CursorState
   mouse: MouseModes
   scrollbar: ScrollbarState
   focus_reporting: boolean
 }
+
+export type RenderPayload = RenderPayloadMetadata &
+  ({ cells: Cell[][]; rows?: never } | { cells?: never; rows: RenderRow[] })
 
 export interface CellMetrics {
   width: number

@@ -205,17 +205,44 @@ if Code.ensure_loaded?(Phoenix.Component) do
     """
     @spec render_payload(String.t(), GenServer.server()) :: map()
     def render_payload(id, term) do
-      %{cells: cells, cursor: cursor, mouse: mouse, scrollbar: scrollbar, focus_reporting: focus_reporting} =
-        Ghostty.Terminal.render_state(term)
+      state = Ghostty.Terminal.render_state(term)
 
-      %{
-        id: id,
-        cells: cells_to_payload(cells),
-        cursor: cursor |> Map.update!(:color, &color_to_list/1),
-        mouse: mouse,
-        scrollbar: scrollbar,
-        focus_reporting: focus_reporting
-      }
+      id
+      |> render_metadata(state)
+      |> Map.put(:cells, cells_to_payload(state.cells))
+    end
+
+    @doc """
+    Returns an incremental render payload and the current cell baseline.
+
+    `previous_cells` is the baseline returned by the preceding call. The first
+    call and any terminal shape change return a full `:cells` grid; subsequent
+    calls return only changed `:rows`.
+    """
+    @spec incremental_render_payload(String.t(), GenServer.server(), list() | nil) ::
+            {map(), list()}
+    def incremental_render_payload(id, term, previous_cells) do
+      state = Ghostty.Terminal.render_state(term)
+
+      payload =
+        case changed_rows(previous_cells, state.cells) do
+          :full ->
+            id
+            |> render_metadata(state)
+            |> Map.put(:cells, cells_to_payload(state.cells))
+
+          rows ->
+            id
+            |> render_metadata(state)
+            |> Map.put(
+              :rows,
+              Enum.map(rows, fn {index, cells} ->
+                %{index: index, cells: row_to_payload(cells)}
+              end)
+            )
+        end
+
+      {payload, state.cells}
     end
 
     @doc """
@@ -238,11 +265,46 @@ if Code.ensure_loaded?(Phoenix.Component) do
     defp color_to_list(nil), do: nil
     defp color_to_list({r, g, b}), do: [r, g, b]
 
-    defp cells_to_payload(cells) do
-      Enum.map(cells, fn row ->
-        Enum.map(row, fn {char, fg, bg, flags} ->
-          [char, color_to_list(fg), color_to_list(bg), flags]
+    defp render_metadata(id, state) do
+      %{
+        id: id,
+        cursor: Map.update!(state.cursor, :color, &color_to_list/1),
+        mouse: state.mouse,
+        scrollbar: state.scrollbar,
+        focus_reporting: state.focus_reporting
+      }
+    end
+
+    defp changed_rows(nil, _cells), do: :full
+
+    defp changed_rows(previous, cells) when is_list(previous) do
+      if same_shape?(previous, cells) do
+        previous
+        |> Enum.zip(cells)
+        |> Enum.with_index()
+        |> Enum.flat_map(fn
+          {{previous_row, row}, _index} when previous_row == row -> []
+          {{_previous_row, row}, index} -> [{index, row}]
         end)
+      else
+        :full
+      end
+    end
+
+    defp changed_rows(_previous, _cells), do: :full
+
+    defp same_shape?(left, right) do
+      length(left) == length(right) and
+        left
+        |> Enum.zip(right)
+        |> Enum.all?(fn {left_row, right_row} -> length(left_row) == length(right_row) end)
+    end
+
+    defp cells_to_payload(cells), do: Enum.map(cells, &row_to_payload/1)
+
+    defp row_to_payload(row) do
+      Enum.map(row, fn {char, fg, bg, flags} ->
+        [char, color_to_list(fg), color_to_list(bg), flags]
       end)
     end
 

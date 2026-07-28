@@ -332,4 +332,51 @@ defmodule Ghostty.LiveTerminalTest do
       assert %{focus_reporting: true} = payload
     end
   end
+
+  describe "incremental_render_payload/3" do
+    test "returns a full grid for the initial baseline" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+
+      assert {%{cells: cells} = payload, baseline} =
+               LiveTerminal.incremental_render_payload("my-term", term, nil)
+
+      refute Map.has_key?(payload, :rows)
+      assert length(cells) == 2
+      assert length(baseline) == 2
+    end
+
+    test "returns only changed rows after the initial render" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+      {_payload, baseline} = LiveTerminal.incremental_render_payload("my-term", term, nil)
+
+      Ghostty.Terminal.write(term, "\e[2;1HX")
+
+      assert {%{rows: [%{index: 1, cells: cells}]} = payload, _baseline} =
+               LiveTerminal.incremental_render_payload("my-term", term, baseline)
+
+      refute Map.has_key?(payload, :cells)
+      assert length(cells) == 10
+    end
+
+    test "returns an empty row diff when only metadata needs rendering" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+      {_payload, baseline} = LiveTerminal.incremental_render_payload("my-term", term, nil)
+
+      assert {%{rows: []}, _baseline} =
+               LiveTerminal.incremental_render_payload("my-term", term, baseline)
+    end
+
+    test "returns a full grid after a shape change" do
+      {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
+      {_payload, baseline} = LiveTerminal.incremental_render_payload("my-term", term, nil)
+
+      Ghostty.Terminal.resize(term, 12, 3)
+
+      assert {%{cells: cells} = payload, _baseline} =
+               LiveTerminal.incremental_render_payload("my-term", term, baseline)
+
+      refute Map.has_key?(payload, :rows)
+      assert length(cells) == 3
+    end
+  end
 end

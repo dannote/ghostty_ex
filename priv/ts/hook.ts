@@ -16,7 +16,7 @@ import {
   mouseButtonName,
   primaryPressedButton
 } from './input'
-import { renderCells, renderSelection } from './render'
+import { applyRowUpdates, renderCells, renderRows, renderSelection } from './render'
 import { normalizeSelection, selectedText } from './selection'
 import { DEFAULT_MOUSE } from './types'
 import { clamp } from './util'
@@ -28,6 +28,7 @@ import type {
   CursorState,
   MouseModes,
   RenderPayload,
+  RenderRow,
   ScrollbarState
 } from './types'
 
@@ -59,6 +60,7 @@ interface TerminalState {
   autofocusPending: boolean
 
   onRenderCells?: (pre: HTMLPreElement, rows: Cell[][]) => void
+  onRenderRows?: (pre: HTMLPreElement, rows: RenderRow[], allRows: Cell[][]) => void
 
   screen: HTMLDivElement
   pre: HTMLPreElement
@@ -657,20 +659,36 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
 
     this.handleEvent('ghostty:render', (payload: RenderPayload) => {
       if (payload.id !== this.el.id) return
-      this.rowsData = payload.cells
+
+      let changedRows: RenderRow[] | null = null
+      if (Array.isArray(payload.rows)) {
+        changedRows = applyRowUpdates(this.rowsData, payload.rows)
+      } else {
+        const cells = payload.cells
+        if (!Array.isArray(cells)) return
+        this.rowsData = cells
+        this.cols = cells[0]?.length ?? this.cols
+        this.rows = cells.length || this.rows
+      }
+
       this.cursor = payload.cursor
-      this.cols = payload.cells[0]?.length ?? this.cols
-      this.rows = payload.cells.length || this.rows
       this.mouse = payload.mouse || { ...DEFAULT_MOUSE }
       this.scrollbar = payload.scrollbar ?? null
       this.focusReporting = payload.focus_reporting ?? false
       if (mouseModeActive(this)) {
         clearSelection(this)
       }
-      // Support an optional onRenderCells hook for custom cell rendering
-      // (e.g. RLE coalescing, canvas, etc.) without forking the library.
-      // Falls back to the built-in renderer.
-      ;(this.onRenderCells || renderCells)(this.pre, payload.cells)
+      if (changedRows) {
+        if (this.onRenderRows) {
+          this.onRenderRows(this.pre, changedRows, this.rowsData)
+        } else if (this.onRenderCells) {
+          this.onRenderCells(this.pre, this.rowsData)
+        } else if (!renderRows(this.pre, changedRows)) {
+          renderCells(this.pre, this.rowsData)
+        }
+      } else {
+        ;(this.onRenderCells || renderCells)(this.pre, this.rowsData)
+      }
       doRenderSelection(this)
       syncCursorBlink(this)
       doRenderCursor(this)

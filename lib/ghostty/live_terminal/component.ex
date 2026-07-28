@@ -68,6 +68,7 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         |> assign_new(:fit, fn -> false end)
         |> assign_new(:autofocus, fn -> false end)
         |> assign_new(:class, fn -> "" end)
+        |> assign_new(:ghostty_render_baseline, fn -> nil end)
 
       socket =
         if first_mount? or assigns[:refresh] do
@@ -173,7 +174,7 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
 
     @impl true
     def handle_event("refresh", _params, socket) do
-      {:noreply, push_render(socket)}
+      {:noreply, push_render(socket, true)}
     end
 
     defp write_data(socket, data) do
@@ -184,11 +185,26 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
       end
     end
 
-    defp push_render(socket) do
+    defp push_render(socket, force_full? \\ false) do
       term = socket.assigns.term
 
       if is_pid(term) and Process.alive?(term) do
-        Ghostty.LiveTerminal.push_render(socket, socket.assigns.id, term)
+        previous_cells =
+          case socket.assigns.ghostty_render_baseline do
+            %{term: ^term, cells: cells} when not force_full? -> cells
+            _baseline -> nil
+          end
+
+        {payload, cells} =
+          Ghostty.LiveTerminal.incremental_render_payload(
+            socket.assigns.id,
+            term,
+            previous_cells
+          )
+
+        socket
+        |> Phoenix.LiveView.push_event("ghostty:render", payload)
+        |> assign(:ghostty_render_baseline, %{term: term, cells: cells})
       else
         socket
       end
