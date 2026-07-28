@@ -316,13 +316,26 @@ defmodule Features.TerminalTest do
       ~S"""
       (() => {
         const term = document.querySelector("#term-2")
+        const layer = term.querySelector("[data-ghostty-selection-layer]")
+        const input = term.querySelector("textarea[data-ghostty-input='true']")
+        const clipboard = new DataTransfer()
+        input.dispatchEvent(new ClipboardEvent("copy", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: clipboard,
+        }))
+
         return {
-          selectionRects: term.querySelector("[data-ghostty-selection-layer]").childElementCount,
+          copyMode: term.dataset.copyMode,
+          selectionRectsAfterCopy: layer.childElementCount,
+          copiedText: clipboard.getData("text/plain"),
         }
       })()
       """,
       fn result ->
-        assert result["selectionRects"] == 0
+        assert result["copyMode"] == "true"
+        assert result["copiedText"] != ""
+        assert result["selectionRectsAfterCopy"] == 0
       end
     )
     |> screenshot("01-bash-terminal-fit.png")
