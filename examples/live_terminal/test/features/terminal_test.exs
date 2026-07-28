@@ -115,6 +115,59 @@ defmodule Features.TerminalTest do
     )
   end
 
+  test "auto-height terminals retain content height and inherited line height", %{conn: conn} do
+    conn
+    |> visit("/")
+    |> assert_has("#term-1[phx-hook='GhosttyTerminal']")
+    |> evaluate(
+      ~S"""
+      (() => new Promise((resolve) => {
+        const started = performance.now()
+
+        const poll = () => {
+          const term = document.querySelector("#term-1")
+          const screen = term?.firstElementChild
+          const pre = term?.querySelector("pre")
+
+          if (pre?.innerText.includes("ghostty$")) {
+            term.className = ""
+            term.style.height = "auto"
+            term.style.minHeight = "0"
+            term.style.fontSize = "30px"
+            term.style.lineHeight = "1.5"
+
+            requestAnimationFrame(() => {
+              resolve({
+                terminalHeight: term.getBoundingClientRect().height,
+                screenHeight: screen.getBoundingClientRect().height,
+                preHeight: pre.getBoundingClientRect().height,
+                lineHeight: getComputedStyle(pre).lineHeight,
+              })
+            })
+            return
+          }
+
+          if (performance.now() - started > 5000) {
+            resolve({terminalHeight: 0, screenHeight: 0, preHeight: 0, lineHeight: null})
+            return
+          }
+
+          setTimeout(poll, 50)
+        }
+
+        poll()
+      }))()
+      """,
+      [timeout: 6_000],
+      fn result ->
+        assert result["terminalHeight"] > 0
+        assert result["screenHeight"] > 0
+        assert result["preHeight"] > 0
+        assert result["lineHeight"] == "45px"
+      end
+    )
+  end
+
   test "demo controls drive a colorized mouse-reporting session", %{conn: conn} do
     conn
     |> visit("/")

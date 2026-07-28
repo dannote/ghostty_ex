@@ -288,19 +288,27 @@ function scheduleFit(hook: Hook): void {
 
 function currentFitSize(hook: Hook): { cols: number; rows: number } | null {
   const m = metrics(hook)
+  // Fit against the container rather than rendered content. Measuring the
+  // <pre> creates a feedback loop where the current row count determines the
+  // next row count instead of the available terminal viewport.
   const rect = hook.el.getBoundingClientRect()
-  const preRect = hook.pre.getBoundingClientRect()
+  const availableWidth = Math.max(0, hook.el.clientWidth - m.paddingLeft - m.paddingRight)
+  const availableHeight = Math.max(0, hook.el.clientHeight - m.paddingTop - m.paddingBottom)
 
-  const availableWidth = Math.max(0, rect.width - m.paddingLeft - m.paddingRight)
-  const availableHeight = Math.max(0, preRect.height - m.paddingTop - m.paddingBottom)
+  // clientWidth/clientHeight exclude borders, but some test/browser DOM
+  // implementations only expose meaningful bounding-rect dimensions.
+  const fallbackWidth = Math.max(0, rect.width - m.paddingLeft - m.paddingRight)
+  const fallbackHeight = Math.max(0, rect.height - m.paddingTop - m.paddingBottom)
+  const fitWidth = availableWidth || fallbackWidth
+  const fitHeight = availableHeight || fallbackHeight
 
-  if (availableWidth < m.width * 20 || availableHeight < m.height * 5) {
+  if (fitWidth < m.width * 20 || fitHeight < m.height * 5) {
     return null
   }
 
   return {
-    cols: Math.max(2, Math.floor(availableWidth / m.width)),
-    rows: Math.max(2, Math.floor(availableHeight / m.height))
+    cols: Math.max(2, Math.floor(fitWidth / m.width)),
+    rows: Math.max(2, Math.floor(fitHeight / m.height))
   }
 }
 

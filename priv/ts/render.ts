@@ -20,18 +20,14 @@ export function renderCells(pre: HTMLPreElement, rows: Cell[][]): void {
         runChars += esc(ch)
       } else {
         if (runChars) {
-          html += runStyle
-            ? `<span style="${runStyle}">${runChars}</span>`
-            : runChars
+          html += runStyle ? `<span style="${runStyle}">${runChars}</span>` : runChars
         }
         runStyle = styleStr
         runChars = esc(ch)
       }
     }
     if (runChars) {
-      html += runStyle
-        ? `<span style="${runStyle}">${runChars}</span>`
-        : runChars
+      html += runStyle ? `<span style="${runStyle}">${runChars}</span>` : runChars
     }
     html += '\n'
   }

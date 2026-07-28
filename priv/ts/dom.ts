@@ -3,11 +3,10 @@ export function createScreen(): HTMLDivElement {
   screen.style.position = 'relative'
   screen.style.display = 'block'
   screen.style.width = '100%'
-  // Fill the container vertically too — without it, screen is content-flow
-  // sized (= pre's height = content height), so the container height and the
-  // fit-measured "available height" diverge. The fit overcounts rows and
-  // the tmux status bar ends up below the rendered <pre>.
+  // Fill explicitly sized containers while retaining content-based height
+  // when the terminal container itself has no configured height.
   screen.style.height = '100%'
+  screen.style.overflow = 'hidden'
   return screen
 }
 
@@ -18,14 +17,11 @@ export function createPre(): HTMLPreElement {
   pre.style.backgroundColor = '#1e1e2e'
   pre.style.color = '#cdd6f4'
   pre.style.overflow = 'hidden'
-  // Absolute-fill the parent screen so pre's dims always match the
-  // container's. Content-flow sizing made pre's height = content height,
-  // which fed back into fit and either over- or under-counted rows
-  // depending on which rect the fit measurement used. Absolute fill
-  // decouples pre's box from its content while keeping cells in the
-  // normal layout flow inside pre.
-  pre.style.position = 'absolute'
-  pre.style.inset = '0'
+  // Keep the rendered rows in normal flow so an auto-height terminal gets
+  // its height from its content. Fit mode measures the container directly.
+  pre.style.position = 'relative'
+  pre.style.width = '100%'
+  pre.style.minHeight = '100%'
   pre.style.boxSizing = 'border-box'
   pre.style.userSelect = 'none'
   pre.style.webkitUserSelect = 'none'
@@ -35,14 +31,10 @@ export function createPre(): HTMLPreElement {
   // the actual char position away from the cursor's `col * metrics.width`
   // offset — by col 80 the cursor is visibly off by several characters.
   pre.style.letterSpacing = '0'
+  pre.style.fontKerning = 'none'
   pre.style.fontFeatureSettings = 'normal'
   pre.style.fontVariantLigatures = 'none'
   pre.style.textRendering = 'geometricPrecision'
-  // Pin vertical metric to an explicit integer-pixel line-height. Unitless
-  // "1.2" let the browser do fractional rounding between computed and used
-  // values — cursor's `cy * metrics.height` then drifts. 17px is a safe
-  // integer value for typical monospace setups.
-  pre.style.lineHeight = '17px'
   return pre
 }
 
@@ -143,6 +135,7 @@ export function measureCellMetrics(
   // otherwise reports a width subject to kerning/ligatures that the pre
   // itself suppresses, drifting the cursor off the real glyph position.
   measure.style.letterSpacing = '0'
+  measure.style.fontKerning = 'none'
   measure.style.fontFeatureSettings = 'normal'
   measure.style.fontVariantLigatures = 'none'
   measure.style.textRendering = 'geometricPrecision'
