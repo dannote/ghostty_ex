@@ -168,6 +168,64 @@ defmodule Features.TerminalTest do
     )
   end
 
+  test "row updates preserve unchanged terminal DOM", %{conn: conn} do
+    conn
+    |> visit("/")
+    |> assert_has("#term-1[phx-hook='GhosttyTerminal']")
+    |> evaluate(
+      ~S"""
+      (() => new Promise((resolve) => {
+        const started = performance.now()
+        let initialText = null
+        let marked = false
+
+        const poll = () => {
+          const term = document.querySelector("#term-1")
+          const pre = term?.querySelector("pre")
+          const input = term?.querySelector("textarea[data-ghostty-input='true']")
+          const rowElements = pre ? Array.from(pre.children) : []
+          const text = pre?.innerText || ""
+
+          if (!marked && text.includes("ghostty$") && rowElements.length > 0) {
+            initialText = text
+            rowElements.forEach((row, index) => {
+              row.dataset.incrementalWitness = String(index)
+            })
+            marked = true
+            input.dispatchEvent(new KeyboardEvent("keydown", {
+              key: "x",
+              bubbles: true,
+              cancelable: true,
+            }))
+          } else if (marked && text !== initialText) {
+            resolve({
+              textChanged: true,
+              wrappersPreserved: rowElements.every(
+                (row, index) => row.dataset.incrementalWitness === String(index)
+              ),
+            })
+            return
+          }
+
+          if (performance.now() - started > 5000) {
+            resolve({textChanged: false, wrappersPreserved: false, text})
+            return
+          }
+
+          setTimeout(poll, 50)
+        }
+
+        poll()
+      }))()
+      """,
+      [timeout: 6_000],
+      fn result ->
+        assert result["textChanged"]
+        assert result["wrappersPreserved"]
+      end
+    )
+  end
+
   test "demo controls drive a colorized mouse-reporting session", %{conn: conn} do
     conn
     |> visit("/")
