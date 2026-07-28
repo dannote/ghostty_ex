@@ -157,6 +157,7 @@ defmodule LiveTerminalWeb.TerminalLive do
                 pty={@pty}
                 fit={@fit?}
                 autofocus={false}
+                copy_mode={true}
                 class="live-terminal-shell"
               />
             <% else %>

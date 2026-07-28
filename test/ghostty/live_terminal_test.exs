@@ -50,6 +50,14 @@ defmodule Ghostty.LiveTerminalTest do
       assert html =~ ~s(data-autofocus="true")
     end
 
+    test "renders opt-in copy mode" do
+      disabled = render_component(&LiveTerminal.terminal/1, id: "copy-disabled")
+      enabled = render_component(&LiveTerminal.terminal/1, id: "copy-enabled", copy_mode: true)
+
+      assert disabled =~ ~s(data-copy-mode="false")
+      assert enabled =~ ~s(data-copy-mode="true")
+    end
+
     test "passes through global attributes" do
       html = render_component(&LiveTerminal.terminal/1, id: "t3", "data-test": "yes")
 

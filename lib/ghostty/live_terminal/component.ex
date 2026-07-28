@@ -38,6 +38,8 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
       * `:rows` — terminal height (default: `24`)
       * `:fit` — auto-fit terminal size to the rendered container (default: `false`)
       * `:autofocus` — focus the hidden terminal input on mount (default: `false`)
+      * `:copy_mode` — let primary-button drags select text while terminal mouse
+        tracking is active; clicks are still forwarded to the terminal (default: `false`)
       * `:class` — CSS class for the container div (default: `""`)
 
     Global HTML attributes (`data-*`, `aria-*`, etc.) are passed through.
@@ -67,6 +69,7 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         |> assign_new(:rows, fn -> 24 end)
         |> assign_new(:fit, fn -> false end)
         |> assign_new(:autofocus, fn -> false end)
+        |> assign_new(:copy_mode, fn -> false end)
         |> assign_new(:class, fn -> "" end)
         |> assign_new(:ghostty_render_baseline, fn -> nil end)
 
@@ -93,6 +96,7 @@ if Code.ensure_loaded?(Phoenix.LiveComponent) do
         data-rows={@rows}
         data-fit={to_string(@fit)}
         data-autofocus={to_string(@autofocus)}
+        data-copy-mode={to_string(@copy_mode)}
         style="font-family: monospace; line-height: 1.2;"
       >
         <textarea data-ghostty-input="true" autofocus={@autofocus} aria-label="Terminal input"></textarea>

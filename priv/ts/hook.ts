@@ -32,11 +32,22 @@ import type {
   ScrollbarState
 } from './types'
 
+interface DeferredRender {
+  rowsData: Cell[][]
+  payload: RenderPayload
+}
+
+interface PendingMousePress {
+  event: MouseEvent
+  point: CellPoint
+}
+
 interface TerminalState {
   cols: number
   rows: number
   fit: boolean
   autofocus: boolean
+  copyMode: boolean
   rowsData: Cell[][]
   cursor: CursorState | null
   mouse: MouseModes
@@ -58,6 +69,8 @@ interface TerminalState {
   autofocusTimers: ReturnType<typeof setTimeout>[]
   readySent: boolean
   autofocusPending: boolean
+  deferredRender: DeferredRender | null
+  pendingMousePress: PendingMousePress | null
 
   onRenderCells?: (pre: HTMLPreElement, rows: Cell[][]) => void
   onRenderRows?: (pre: HTMLPreElement, rows: RenderRow[], allRows: Cell[][]) => void
@@ -118,10 +131,18 @@ function mouseModeActive(hook: Hook): boolean {
   return Boolean(hook.mouse?.tracking)
 }
 
+function selectionAllowed(hook: Hook): boolean {
+  return !mouseModeActive(hook) || hook.copyMode
+}
+
 function hasSelection(hook: Hook): boolean {
   return (
-    !mouseModeActive(hook) && normalizeSelection(hook.selectionAnchor, hook.selectionFocus) !== null
+    selectionAllowed(hook) && normalizeSelection(hook.selectionAnchor, hook.selectionFocus) !== null
   )
+}
+
+function defersRenderingForSelection(hook: Hook): boolean {
+  return hook.copyMode && mouseModeActive(hook) && (hook.selecting || hasSelection(hook))
 }
 
 function clearSelection(hook: Hook): void {
@@ -236,9 +257,9 @@ function doRenderCursor(hook: Hook): void {
 }
 
 function doRenderSelection(hook: Hook): void {
-  const sel = mouseModeActive(hook)
-    ? null
-    : normalizeSelection(hook.selectionAnchor, hook.selectionFocus)
+  const sel = selectionAllowed(hook)
+    ? normalizeSelection(hook.selectionAnchor, hook.selectionFocus)
+    : null
   renderSelection(hook.selectionLayer, sel, hook.cols, metrics(hook))
 }
 
@@ -364,12 +385,95 @@ async function copySelectionToClipboard(hook: Hook): Promise<void> {
   focusInput(hook, true)
 }
 
+function finishRender(hook: Hook): void {
+  doRenderSelection(hook)
+  syncCursorBlink(hook)
+  doRenderCursor(hook)
+  scheduleFit(hook)
+  sendReady(hook)
+}
+
+function renderAcceptedRows(hook: Hook, changedRows: RenderRow[] | null, forceFull: boolean): void {
+  if (forceFull || !changedRows) {
+    ;(hook.onRenderCells || renderCells)(hook.pre, hook.rowsData)
+  } else if (hook.onRenderRows) {
+    hook.onRenderRows(hook.pre, changedRows, hook.rowsData)
+  } else if (hook.onRenderCells) {
+    hook.onRenderCells(hook.pre, hook.rowsData)
+  } else if (!renderRows(hook.pre, changedRows)) {
+    renderCells(hook.pre, hook.rowsData)
+  }
+}
+
+function applyRenderPayload(
+  hook: Hook,
+  payload: RenderPayload,
+  deferredRowsData: Cell[][] | null = null
+): void {
+  let changedRows: RenderRow[] | null = null
+
+  if (deferredRowsData) {
+    hook.rowsData = deferredRowsData
+    hook.cols = deferredRowsData[0]?.length ?? hook.cols
+    hook.rows = deferredRowsData.length || hook.rows
+  } else if (Array.isArray(payload.rows)) {
+    changedRows = applyRowUpdates(hook.rowsData, payload.rows)
+  } else {
+    const cells = payload.cells
+    if (!Array.isArray(cells)) return
+    hook.rowsData = cells
+    hook.cols = cells[0]?.length ?? hook.cols
+    hook.rows = cells.length || hook.rows
+  }
+
+  hook.cursor = payload.cursor
+  hook.mouse = payload.mouse || { ...DEFAULT_MOUSE }
+  hook.scrollbar = payload.scrollbar ?? null
+  hook.focusReporting = payload.focus_reporting ?? false
+
+  if (!selectionAllowed(hook)) {
+    clearSelection(hook)
+  }
+
+  renderAcceptedRows(hook, changedRows, deferredRowsData !== null)
+  finishRender(hook)
+}
+
+function deferRenderPayload(hook: Hook, payload: RenderPayload): void {
+  let rowsData = hook.deferredRender?.rowsData ?? hook.rowsData
+
+  if (Array.isArray(payload.rows)) {
+    rowsData = rowsData.slice()
+    applyRowUpdates(rowsData, payload.rows)
+  } else if (Array.isArray(payload.cells)) {
+    rowsData = payload.cells
+  } else {
+    return
+  }
+
+  hook.deferredRender = { rowsData, payload }
+}
+
+function flushDeferredRender(hook: Hook): void {
+  const deferred = hook.deferredRender
+  if (!deferred) return
+
+  hook.deferredRender = null
+  applyRenderPayload(hook, deferred.payload, deferred.rowsData)
+}
+
+function clearSelectionAndResume(hook: Hook): void {
+  clearSelection(hook)
+  flushDeferredRender(hook)
+}
+
 const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
   mounted(this: Hook) {
     this.cols = parseInt(this.el.dataset.cols ?? '80')
     this.rows = parseInt(this.el.dataset.rows ?? '24')
     this.fit = this.el.dataset.fit === 'true'
     this.autofocus = this.el.dataset.autofocus === 'true'
+    this.copyMode = this.el.dataset.copyMode === 'true'
     this.rowsData = []
     this.cursor = null
     this.mouse = { ...DEFAULT_MOUSE }
@@ -391,6 +495,8 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     this.autofocusTimers = []
     this.readySent = false
     this.autofocusPending = this.autofocus
+    this.deferredRender = null
+    this.pendingMousePress = null
 
     this.el.tabIndex = 0
     this.el.style.position = 'relative'
@@ -457,13 +563,21 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       }
       this.pointerActive = true
       focusInput(this, true)
-      if (!mouseModeActive(this) && e.button === 0 && !hasMouseModifiers(e)) {
+
+      if (selectionAllowed(this) && e.button === 0 && !hasMouseModifiers(e)) {
+        if (hasSelection(this)) {
+          clearSelectionAndResume(this)
+        }
         this.selecting = true
         this.selectionAnchor = point
         this.selectionFocus = point
+        this.pendingMousePress = mouseModeActive(this) ? { event: e, point } : null
         doRenderSelection(this)
         e.preventDefault()
+        return
       }
+
+      this.pendingMousePress = null
       pushMouseEvent(this, 'press', e, point)
     }
 
@@ -475,12 +589,11 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       if (!point) {
         return
       }
-      if (this.selecting && !mouseModeActive(this)) {
+      if (this.selecting && selectionAllowed(this)) {
         this.selectionFocus = point
         doRenderSelection(this)
         e.preventDefault()
-      }
-      if (e.buttons !== 0) {
+      } else if (e.buttons !== 0) {
         pushMouseEvent(this, 'motion', e, point)
       }
     }
@@ -491,17 +604,32 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       }
       this.pointerActive = false
       const point = cellPointFromEvent(this, e)
-      if (this.selecting && point && !mouseModeActive(this)) {
-        this.selectionFocus = point
+
+      if (this.selecting && selectionAllowed(this)) {
+        if (point) {
+          this.selectionFocus = point
+        }
         this.selecting = false
+
+        const pendingPress = this.pendingMousePress
+        this.pendingMousePress = null
         const sel = normalizeSelection(this.selectionAnchor, this.selectionFocus)
+
         if (!sel) {
-          clearSelection(this)
+          clearSelectionAndResume(this)
           focusInput(this, true)
+          if (pendingPress && point) {
+            pushMouseEvent(this, 'press', pendingPress.event, pendingPress.point)
+            pushMouseEvent(this, 'release', e, point)
+          }
         } else {
           doRenderSelection(this)
         }
-      } else if (!hasSelection(this)) {
+        return
+      }
+
+      this.pendingMousePress = null
+      if (!hasSelection(this)) {
         focusInput(this, true)
       }
       if (point) {
@@ -512,6 +640,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     this.onDocumentPointerDown = (e: MouseEvent) => {
       if (!isInsideTerminal(this, e.target as Node)) {
         disableAutofocus(this)
+        clearSelectionAndResume(this)
         blurTerminal(this)
       }
     }
@@ -544,6 +673,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       if (isCopyShortcut(e) && hasSelection(this)) {
         e.preventDefault()
         void copySelectionToClipboard(this)
+        clearSelectionAndResume(this)
         return
       }
       if (isPasteShortcut(e)) {
@@ -553,6 +683,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
         return // let browser handle dev shortcuts (Ctrl+Shift+R hard refresh, F12/Shift+I devtools, etc.) even in raw mode
       }
       e.preventDefault()
+      clearSelectionAndResume(this)
       pushHookEvent(this, 'key', {
         key: e.key,
         shiftKey: e.shiftKey,
@@ -572,7 +703,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
         return
       }
       e.preventDefault()
-      clearSelection(this)
+      clearSelectionAndResume(this)
       pushHookEvent(this, 'text', { data: text })
       this.input.value = ''
     }
@@ -588,6 +719,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
       const sel = normalizeSelection(this.selectionAnchor, this.selectionFocus)
       const text = selectedText(sel, this.rowsData, this.cols)
       e.clipboardData?.setData('text/plain', text)
+      clearSelectionAndResume(this)
     }
 
     this.onCompositionStart = () => {
@@ -597,7 +729,7 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     this.onCompositionEnd = (e: CompositionEvent) => {
       this.composing = false
       if (e.data) {
-        clearSelection(this)
+        clearSelectionAndResume(this)
         pushHookEvent(this, 'text', { data: e.data })
       }
       this.input.value = ''
@@ -660,40 +792,12 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     this.handleEvent('ghostty:render', (payload: RenderPayload) => {
       if (payload.id !== this.el.id) return
 
-      let changedRows: RenderRow[] | null = null
-      if (Array.isArray(payload.rows)) {
-        changedRows = applyRowUpdates(this.rowsData, payload.rows)
+      if (defersRenderingForSelection(this) && payload.mouse?.tracking !== false) {
+        deferRenderPayload(this, payload)
       } else {
-        const cells = payload.cells
-        if (!Array.isArray(cells)) return
-        this.rowsData = cells
-        this.cols = cells[0]?.length ?? this.cols
-        this.rows = cells.length || this.rows
+        flushDeferredRender(this)
+        applyRenderPayload(this, payload)
       }
-
-      this.cursor = payload.cursor
-      this.mouse = payload.mouse || { ...DEFAULT_MOUSE }
-      this.scrollbar = payload.scrollbar ?? null
-      this.focusReporting = payload.focus_reporting ?? false
-      if (mouseModeActive(this)) {
-        clearSelection(this)
-      }
-      if (changedRows) {
-        if (this.onRenderRows) {
-          this.onRenderRows(this.pre, changedRows, this.rowsData)
-        } else if (this.onRenderCells) {
-          this.onRenderCells(this.pre, this.rowsData)
-        } else if (!renderRows(this.pre, changedRows)) {
-          renderCells(this.pre, this.rowsData)
-        }
-      } else {
-        ;(this.onRenderCells || renderCells)(this.pre, this.rowsData)
-      }
-      doRenderSelection(this)
-      syncCursorBlink(this)
-      doRenderCursor(this)
-      scheduleFit(this)
-      sendReady(this)
     })
 
     if (this.target) {
@@ -704,6 +808,14 @@ const GhosttyTerminal: ViewHookObject & Record<string, unknown> = {
     requestAnimationFrame(() => sendReady(this))
     setTimeout(() => sendReady(this), 50)
     scheduleAutofocus(this)
+  },
+
+  updated(this: Hook) {
+    const copyMode = this.el.dataset.copyMode === 'true'
+    if (this.copyMode && !copyMode) {
+      clearSelectionAndResume(this)
+    }
+    this.copyMode = copyMode
   },
 
   destroyed(this: Hook) {

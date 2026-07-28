@@ -24,6 +24,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     attr(:rows, :integer, default: 24)
     attr(:fit, :boolean, default: false)
     attr(:autofocus, :boolean, default: false)
+    attr(:copy_mode, :boolean, default: false)
     attr(:class, :string, default: "")
     attr(:rest, :global)
 
@@ -33,7 +34,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
     This is a stateless function component. For a stateful LiveComponent
     that handles key events internally, use `Ghostty.LiveTerminal.Component`.
 
-    Supports global HTML attributes via `:rest`.
+    Supports global HTML attributes via `:rest`. Set `copy_mode={true}` to let
+    primary-button drags select and copy terminal text even while an application
+    has enabled mouse tracking. Ordinary clicks continue to reach the application.
     """
     def terminal(assigns) do
       ~H"""
@@ -46,6 +49,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
         data-rows={@rows}
         data-fit={to_string(@fit)}
         data-autofocus={to_string(@autofocus)}
+        data-copy-mode={to_string(@copy_mode)}
         style="font-family: monospace; line-height: 1.2;"
         {@rest}
       >
