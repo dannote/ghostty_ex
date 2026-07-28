@@ -20,7 +20,7 @@ defmodule Mix.Tasks.Ghostty.Setup do
   use Mix.Task
 
   @ghostty_repo "https://github.com/ghostty-org/ghostty.git"
-  @ghostty_ref "baad0aa6669dc576872831752be0f30debecbfd1"
+  @ghostty_ref_file ".ghostty-ref"
 
   @impl true
   def run(_args) do
@@ -48,10 +48,12 @@ defmodule Mix.Tasks.Ghostty.Setup do
       if File.dir?(Path.join(dir, ".git")) do
         Mix.shell().info("Ghostty source already cloned at #{dir}")
       else
-        Mix.shell().info("Cloning ghostty (#{short_ref()})...")
-        cmd!("git", ["clone", "--depth", "1", @ghostty_repo, dir])
-        cmd!("git", ["-C", dir, "fetch", "--depth", "1", "origin", @ghostty_ref])
-        cmd!("git", ["-C", dir, "checkout", @ghostty_ref])
+        ref = ghostty_ref()
+        Mix.shell().info("Cloning ghostty (#{short_ref(ref)})...")
+        cmd!("git", ["init", dir])
+        cmd!("git", ["-C", dir, "remote", "add", "origin", @ghostty_repo])
+        cmd!("git", ["-C", dir, "fetch", "--depth", "1", "origin", ref])
+        cmd!("git", ["-C", dir, "checkout", "--detach", "FETCH_HEAD"])
       end
     end
   end
@@ -153,5 +155,12 @@ defmodule Mix.Tasks.Ghostty.Setup do
     |> Path.dirname()
   end
 
-  defp short_ref, do: String.slice(@ghostty_ref, 0, 7)
+  defp ghostty_ref do
+    project_root()
+    |> Path.join(@ghostty_ref_file)
+    |> File.read!()
+    |> String.trim()
+  end
+
+  defp short_ref(ref), do: String.slice(ref, 0, 7)
 end

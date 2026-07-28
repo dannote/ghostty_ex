@@ -28,8 +28,11 @@ jobs:
 
       - name: Build libghostty-vt
         run: |
+          GHOSTTY_REF=$(tr -d '[:space:]' < .ghostty-ref)
           git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
           cd /tmp/ghostty-src
+          git fetch --depth 1 origin "$GHOSTTY_REF"
+          git checkout "$GHOSTTY_REF"
           zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
       - name: Install libghostty-vt
@@ -93,8 +96,11 @@ jobs:
 
       - name: Build libghostty-vt
         run: |
+          GHOSTTY_REF=$(tr -d '[:space:]' < .ghostty-ref)
           git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty-src
           cd /tmp/ghostty-src
+          git fetch --depth 1 origin "$GHOSTTY_REF"
+          git checkout "$GHOSTTY_REF"
           zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
       - name: Install libghostty-vt for example

@@ -156,7 +156,7 @@ defmodule Ghostty.MixProject do
         lib/mix
         priv/ts
         examples/*.exs
-        mix.exs README.md LICENSE CHANGELOG.md .formatter.exs
+        mix.exs README.md LICENSE CHANGELOG.md .formatter.exs .ghostty-ref
         checksum-Ghostty.Terminal.Nif.exs
         checksum-Ghostty.PTY.Nif.exs
       ]
