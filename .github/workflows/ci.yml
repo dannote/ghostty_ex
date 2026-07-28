@@ -13,7 +13,8 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, otp: '27', elixir: '1.18' }
-          - { os: macos-latest, otp: '27', elixir: '1.18' }
+          # Zig 0.15 cannot link against the macOS 26 SDK shipped by macos-latest.
+          - { os: macos-15, otp: '27', elixir: '1.18' }
     steps:
       - uses: actions/checkout@v4
 

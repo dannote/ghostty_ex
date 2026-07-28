@@ -16,7 +16,8 @@ jobs:
         include:
           - { target: x86_64-linux-gnu,   os: ubuntu-latest }
           - { target: aarch64-linux-gnu,  os: ubuntu-latest }
-          - { target: aarch64-macos-none, os: macos-latest }
+          # Zig 0.15 cannot link against the macOS 26 SDK shipped by macos-latest.
+          - { target: aarch64-macos-none, os: macos-15 }
 
     steps:
       - uses: actions/checkout@v4
