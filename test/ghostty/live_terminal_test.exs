@@ -319,6 +319,19 @@ defmodule Ghostty.LiveTerminalTest do
       assert Map.has_key?(mouse, :tracking)
     end
 
+    test "includes JSON-safe terminal theme colors" do
+      {:ok, term} =
+        Ghostty.Terminal.start_link(
+          cols: 10,
+          rows: 2,
+          foreground: {1, 2, 3},
+          background: {4, 5, 6}
+        )
+
+      assert %{foreground: [1, 2, 3], background: [4, 5, 6]} =
+               LiveTerminal.render_payload("my-term", term)
+    end
+
     test "includes scrollbar state" do
       {:ok, term} = Ghostty.Terminal.start_link(cols: 10, rows: 2)
       payload = LiveTerminal.render_payload("my-term", term)

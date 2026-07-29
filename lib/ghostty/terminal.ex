@@ -74,23 +74,36 @@ defmodule Ghostty.Terminal do
           len: non_neg_integer()
         }
 
+  @type palette :: [rgb()] | %{optional(0..255) => rgb()}
+
+  @type theme :: %{
+          foreground: rgb() | nil,
+          background: rgb() | nil,
+          cursor: rgb() | nil,
+          palette: [rgb()]
+        }
+
   @type render_state :: %{
           cells: [[cell()]],
           cursor: cursor_state(),
           mouse: mouse_modes(),
           scrollbar: scrollbar(),
-          focus_reporting: boolean()
+          focus_reporting: boolean(),
+          foreground: rgb() | nil,
+          background: rgb() | nil
         }
 
   @type option ::
           {:cols, pos_integer()}
           | {:rows, pos_integer()}
           | {:max_scrollback, non_neg_integer()}
+          | {:foreground, rgb()}
+          | {:background, rgb()}
+          | {:cursor_color, rgb()}
+          | {:palette, palette()}
           | {:name, GenServer.name()}
 
   @unsupported_private_modes ["\e[?1034h", "\e[?1034l"]
-
-  @has_render_state_nif function_exported?(Ghostty.Terminal.Nif, :nif_render_state, 1)
 
   @enforce_keys [:ref]
   defstruct [:ref, :cols, :rows, :mouse_modes, :focus_reporting]
@@ -106,6 +119,12 @@ defmodule Ghostty.Terminal do
     * `:cols` - number of columns (default: `80`)
     * `:rows` - number of rows (default: `24`)
     * `:max_scrollback` - maximum scrollback lines (default: `10_000`)
+    * `:foreground` - default foreground as `{red, green, blue}`
+    * `:background` - default background as `{red, green, blue}`
+    * `:cursor_color` - default cursor color as `{red, green, blue}`
+    * `:palette` - palette colors as a list starting at index 0, or a map of
+      palette indices (`0..255`) to RGB tuples; unspecified entries retain
+      libghostty-vt's built-in defaults
     * `:name` - GenServer name registration
 
   """
@@ -326,6 +345,18 @@ defmodule Ghostty.Terminal do
   end
 
   @doc """
+  Returns the terminal's effective color theme.
+
+  Values include defaults configured at startup plus any overrides applied by
+  terminal programs through OSC color sequences. The palette always contains
+  256 entries.
+  """
+  @spec theme(GenServer.server()) :: theme()
+  def theme(terminal) do
+    GenServer.call(terminal, :theme)
+  end
+
+  @doc """
   Returns the current terminal mouse reporting mode state.
   """
   @spec mouse_modes(GenServer.server()) :: mouse_modes()
@@ -346,8 +377,10 @@ defmodule Ghostty.Terminal do
     validate_pos_integer!(:cols, cols)
     validate_pos_integer!(:rows, rows)
     validate_non_neg_integer!(:max_scrollback, max_scrollback)
+    theme = validate_theme_options!(opts)
 
     ref = Nif.nif_new(cols, rows, max_scrollback)
+    configure_theme(ref, theme)
     Nif.nif_set_effect_pid(ref, Keyword.fetch!(opts, :owner))
 
     {:ok,
@@ -377,6 +410,73 @@ defmodule Ghostty.Terminal do
   defp validate_non_neg_integer!(name, value) do
     raise ArgumentError,
           "expected #{name} to be a non-negative integer, got: #{inspect(value)}"
+  end
+
+  defp validate_theme_options!(opts) do
+    colors =
+      for {name, kind} <- [foreground: 0, background: 1, cursor_color: 2],
+          value = Keyword.get(opts, name),
+          not is_nil(value) do
+        {kind, validate_rgb!(name, value)}
+      end
+
+    palette =
+      case Keyword.fetch(opts, :palette) do
+        {:ok, value} -> encode_palette!(value)
+        :error -> <<>>
+      end
+
+    {colors, palette}
+  end
+
+  defp validate_rgb!(_name, {red, green, blue} = color)
+       when red in 0..255 and green in 0..255 and blue in 0..255,
+       do: color
+
+  defp validate_rgb!(name, value) do
+    raise ArgumentError,
+          "expected #{name} to be an RGB tuple with values from 0 to 255, got: #{inspect(value)}"
+  end
+
+  defp encode_palette!(palette) when is_list(palette) and length(palette) <= 256 do
+    palette
+    |> Enum.with_index()
+    |> encode_palette_entries!()
+  end
+
+  defp encode_palette!(palette) when is_map(palette) do
+    palette
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {index, color} -> {color, index} end)
+    |> encode_palette_entries!()
+  end
+
+  defp encode_palette!(palette) do
+    raise ArgumentError,
+          "expected palette to be a list of up to 256 RGB tuples or a map of indices to RGB tuples, got: #{inspect(palette)}"
+  end
+
+  defp encode_palette_entries!(entries) do
+    entries
+    |> Enum.map(&encode_palette_entry!/1)
+    |> IO.iodata_to_binary()
+  end
+
+  defp encode_palette_entry!({color, index}) when is_integer(index) and index in 0..255 do
+    {red, green, blue} = validate_rgb!("palette index #{index}", color)
+    <<index, red, green, blue>>
+  end
+
+  defp encode_palette_entry!(_entry) do
+    raise ArgumentError, "expected palette indices to be integers from 0 to 255"
+  end
+
+  defp configure_theme(ref, {colors, palette}) do
+    Enum.each(colors, fn {kind, {red, green, blue}} ->
+      Nif.nif_set_color(ref, kind, red, green, blue)
+    end)
+
+    if palette != <<>>, do: Nif.nif_set_palette(ref, palette)
   end
 
   @impl true
@@ -423,6 +523,12 @@ defmodule Ghostty.Terminal do
     {:reply, Nif.nif_render_cells(state.ref), state}
   end
 
+  def handle_call(:theme, _from, state) do
+    {foreground, background, cursor, palette} = Nif.nif_theme(state.ref)
+
+    {:reply, %{foreground: foreground, background: background, cursor: cursor, palette: palette}, state}
+  end
+
   def handle_call(:scrollbar, _from, state) do
     {:reply, scrollbar_from_nif(Nif.nif_scrollbar(state.ref)), state}
   end
@@ -432,12 +538,7 @@ defmodule Ghostty.Terminal do
   end
 
   def handle_call(:render_state, _from, state) do
-    raw =
-      if @has_render_state_nif do
-        Nif.nif_render_state(state.ref)
-      else
-        fallback_render_state(state.ref)
-      end
+    raw = render_state_from_nif_or_fallback(state.ref)
 
     {:reply, {raw, state.mouse_modes, Nif.nif_scrollbar(state.ref), state.focus_reporting}, state}
   end
@@ -492,12 +593,42 @@ defmodule Ghostty.Terminal do
     |> Map.put(:focus_reporting, focus_reporting)
   end
 
+  defp render_state_from_nif_raw({cells, cursor_tuple, _mouse_tuple, foreground, background}) do
+    %{
+      cells: cells,
+      cursor: cursor_state_from_nif(cursor_tuple),
+      foreground: foreground,
+      background: background
+    }
+  end
+
   defp render_state_from_nif_raw({cells, cursor_tuple, _mouse_tuple}) do
-    %{cells: cells, cursor: cursor_state_from_nif(cursor_tuple)}
+    %{
+      cells: cells,
+      cursor: cursor_state_from_nif(cursor_tuple),
+      foreground: nil,
+      background: nil
+    }
   end
 
   defp render_state_from_nif_raw({cells, cursor_tuple}) do
-    %{cells: cells, cursor: cursor_state_from_nif(cursor_tuple)}
+    %{
+      cells: cells,
+      cursor: cursor_state_from_nif(cursor_tuple),
+      foreground: nil,
+      background: nil
+    }
+  end
+
+  defp render_state_from_nif_or_fallback(ref) do
+    Nif.nif_render_state(ref)
+  rescue
+    error in ErlangError ->
+      if Exception.message(error) =~ "not bound" do
+        fallback_render_state(ref)
+      else
+        reraise error, __STACKTRACE__
+      end
   end
 
   defp fallback_render_state(ref) do

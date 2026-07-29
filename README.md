@@ -34,6 +34,31 @@ Ghostty.Terminal.write(term, "Hello, \e[1;32mworld\e[0m!\r\n")
 # => {0, 1}
 ```
 
+## Color themes
+
+Configure default foreground, background, cursor, and ANSI palette colors when
+starting a terminal. A palette list starts at index 0; a map can override sparse
+indices while retaining libghostty-vt's built-in values for the rest.
+
+```elixir
+{:ok, term} =
+  Ghostty.Terminal.start_link(
+    foreground: {205, 214, 244},
+    background: {30, 30, 46},
+    cursor_color: {245, 224, 220},
+    palette: %{
+      1 => {243, 139, 168},
+      4 => {137, 180, 250}
+    }
+  )
+
+Ghostty.Terminal.theme(term)
+# => %{foreground: ..., background: ..., cursor: ..., palette: [...]}
+```
+
+Effective foreground and background colors are also included in
+`Ghostty.Terminal.render_state/1` so custom renderers can apply the theme.
+
 ## Supervision
 
 ```elixir

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { applyTerminalColors } from '../../priv/ts/dom.ts'
 import { isBrowserDevShortcut } from '../../priv/ts/input.ts'
 import { applyRowUpdates, renderCells, renderRows } from '../../priv/ts/render.ts'
 
@@ -30,6 +31,20 @@ describe('isBrowserDevShortcut', () => {
   test('keeps terminal key combinations in the terminal', () => {
     expect(isBrowserDevShortcut(keyboardEvent('r', { ctrlKey: true }))).toBe(false)
     expect(isBrowserDevShortcut(keyboardEvent('i', { metaKey: true }))).toBe(false)
+  })
+})
+
+describe('applyTerminalColors', () => {
+  test('applies configured colors and restores renderer defaults', () => {
+    const pre = { style: { color: '', backgroundColor: '' } }
+
+    applyTerminalColors(pre, [1, 2, 3], [4, 5, 6], 'default-fg', 'default-bg')
+    expect(pre.style.color).toBe('rgb(1,2,3)')
+    expect(pre.style.backgroundColor).toBe('rgb(4,5,6)')
+
+    applyTerminalColors(pre, null, null, 'default-fg', 'default-bg')
+    expect(pre.style.color).toBe('default-fg')
+    expect(pre.style.backgroundColor).toBe('default-bg')
   })
 })
 

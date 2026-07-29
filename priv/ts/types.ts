@@ -42,6 +42,8 @@ export interface RenderRow {
 interface RenderPayloadMetadata {
   id: string
   cursor: CursorState
+  foreground: Color | null
+  background: Color | null
   mouse: MouseModes
   scrollbar: ScrollbarState
   focus_reporting: boolean

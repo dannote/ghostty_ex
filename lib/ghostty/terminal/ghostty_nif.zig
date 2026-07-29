@@ -275,6 +275,49 @@ pub fn nif_new(cols: u16, rows: u16, max_scrollback: u32) !TerminalResource {
     return TerminalResource.create(.{ .terminal = terminal }, .{});
 }
 
+pub fn nif_set_color(res: TerminalResource, kind: u8, r: u8, green: u8, b: u8) !void {
+    const option: g.GhosttyTerminalOption = switch (kind) {
+        0 => g.GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND,
+        1 => g.GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND,
+        2 => g.GHOSTTY_TERMINAL_OPT_COLOR_CURSOR,
+        else => return error.invalid_color_kind,
+    };
+    const color: g.GhosttyColorRgb = .{ .r = r, .g = green, .b = b };
+    if (g.ghostty_terminal_set(res.unpack().terminal, option, &color) != g.GHOSTTY_SUCCESS)
+        return error.color_set_failed;
+}
+
+pub fn nif_set_palette(res: TerminalResource, entries: []const u8) !void {
+    if (entries.len % 4 != 0) return error.invalid_palette;
+
+    const terminal = res.unpack().terminal;
+    var palette: [256]g.GhosttyColorRgb = undefined;
+    if (g.ghostty_terminal_get(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, &palette) != g.GHOSTTY_SUCCESS)
+        return error.palette_get_failed;
+
+    var offset: usize = 0;
+    while (offset < entries.len) : (offset += 4) {
+        palette[entries[offset]] = .{
+            .r = entries[offset + 1],
+            .g = entries[offset + 2],
+            .b = entries[offset + 3],
+        };
+    }
+
+    if (g.ghostty_terminal_set(terminal, g.GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, &palette) != g.GHOSTTY_SUCCESS)
+        return error.palette_set_failed;
+}
+
+pub fn nif_theme(res: TerminalResource) !beam.term {
+    const terminal = res.unpack().terminal;
+    return beam.make(.{
+        make_terminal_color_term(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND),
+        make_terminal_color_term(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND),
+        make_terminal_color_term(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_CURSOR),
+        try make_palette_term(terminal),
+    }, .{});
+}
+
 pub fn nif_set_effect_pid(res: TerminalResource, pid: beam.pid) void {
     var data = res.unpack();
     data.owner_pid = pid;
@@ -463,7 +506,9 @@ pub fn nif_render_state(res: TerminalResource) !beam.term {
     const cells = try make_cells_term(state);
     const cursor = make_cursor_term(state);
     const mouse = make_mouse_modes_term(terminal);
-    return beam.make(.{ cells, cursor, mouse }, .{});
+    const foreground = make_terminal_color_term(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND);
+    const background = make_terminal_color_term(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND);
+    return beam.make(.{ cells, cursor, mouse, foreground, background }, .{});
 }
 
 pub fn nif_mouse_modes(res: TerminalResource) beam.term {
@@ -611,6 +656,29 @@ fn make_cursor_term(state: g.GhosttyRenderState) beam.term {
     }
 
     return beam.make(.{ has_position, x, y, visible, blinking, style_term, wide_tail, color_term }, .{});
+}
+
+fn make_terminal_color_term(terminal: g.GhosttyTerminal, data: g.GhosttyTerminalData) beam.term {
+    var color: g.GhosttyColorRgb = undefined;
+    if (g.ghostty_terminal_get(terminal, data, &color) != g.GHOSTTY_SUCCESS)
+        return beam.make(.nil, .{});
+
+    return beam.make(.{ color.r, color.g, color.b }, .{});
+}
+
+fn make_palette_term(terminal: g.GhosttyTerminal) !beam.term {
+    var palette: [256]g.GhosttyColorRgb = undefined;
+    if (g.ghostty_terminal_get(terminal, g.GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, &palette) != g.GHOSTTY_SUCCESS)
+        return error.palette_get_failed;
+
+    const colors = beam.allocator.alloc(beam.term, palette.len) catch return error.out_of_memory;
+    defer beam.allocator.free(colors);
+
+    for (palette, 0..) |color, index| {
+        colors[index] = beam.make(.{ color.r, color.g, color.b }, .{});
+    }
+
+    return beam.make(colors, .{});
 }
 
 fn make_mouse_modes_term(terminal: g.GhosttyTerminal) beam.term {

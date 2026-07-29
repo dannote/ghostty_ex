@@ -22,6 +22,9 @@ defmodule Ghostty.Terminal.Nif do
     resources: [:TerminalResource, :TtyResource],
     nifs: [
       nif_new: 3,
+      nif_set_color: 5,
+      nif_set_palette: 2,
+      nif_theme: 1,
       nif_vt_write: 2,
       nif_resize: 3,
       nif_reset: 1,
