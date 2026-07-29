@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+## 0.5.0 (2026-07-29)
+
+### Added
+
+- Configure terminal foreground, background, cursor, and ANSI palette colors through `Ghostty.Terminal.start_link/1`, inspect effective colors with `Ghostty.Terminal.theme/1`, and apply them in LiveView renderers.
+- Add opt-in `copy_mode` selection and clipboard support while terminal mouse tracking is active, while continuing to forward ordinary clicks to terminal applications.
+- Add incremental row render payloads and `onRenderRows` / `onRenderCells` hooks for custom LiveView renderers.
+
+### Changed
+
+- Reduce LiveView rendering work by coalescing adjacent cells with identical styles and replacing only changed row elements.
+- Defer and coalesce incoming renders while a copy-mode selection is active so selected text remains stable.
+
+### Fixed
+
+- Preserve auto-height terminal layout and inherited line height in the browser renderer.
+- Pass browser refresh and developer-tools shortcuts through instead of consuming them as terminal input.
+
 ## 0.4.9 (2026-05-24)
 
 ### Fixed
